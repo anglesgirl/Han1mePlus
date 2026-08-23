@@ -17,10 +17,7 @@ internal object HlsEchProxy {
     private val executor = Executors.newCachedThreadPool()
     @Volatile private var server: ServerSocket? = null
     @Volatile private var port = 0
-    @Volatile private var settings: () -> NetworkSettings = { NetworkSettings() }
-
-    fun start(settingsProvider: () -> NetworkSettings): Int {
-        settings = settingsProvider
+    fun start(): Int {
         server?.let { return it.localPort }
         return synchronized(this) {
             server?.let { return@synchronized it.localPort }
@@ -63,7 +60,7 @@ internal object HlsEchProxy {
             val response = runCatching {
                 val requestHeaders = mutableMapOf("User-Agent" to MainActivity.userAgentStatic, "Referer" to referer)
                 if (!cookie.isNullOrEmpty()) requestHeaders["Cookie"] = cookie
-                EchHttpClient.execute("GET", source, requestHeaders, null, echDohUrl(settings()), "")
+                EchHttpClient.execute("GET", source, requestHeaders, null, MainActivity.gatewayDohUrl, "")
             }.getOrElse { return response(output, 502, "text/plain", (it.message ?: "ECH request failed").toByteArray()) }
             if (response.statusCode !in 200..299) return response(output, response.statusCode, "text/plain", response.body)
             val contentType = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value?.firstOrNull() ?: "application/octet-stream"
@@ -89,7 +86,6 @@ internal object HlsEchProxy {
         }
     }
 
-    private fun echDohUrl(value: NetworkSettings): String = MainActivity.gatewayDohUrl
 
     private fun readLine(input: BufferedInputStream): String? {
         val buffer = ByteArrayOutputStream()

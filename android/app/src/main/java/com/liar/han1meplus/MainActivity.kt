@@ -111,7 +111,7 @@ class MainActivity : FlutterActivity() {
         EchHttpClient.init(applicationContext)
         networkSettings = loadNetworkSettings()
         client = createClient()
-        HlsEchProxy.start { networkSettings }
+        HlsEchProxy.start()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "saveCookies" -> {
@@ -478,7 +478,7 @@ private class ConfigurableDns(private val settings: () -> NetworkSettings) : Dns
                 .build()
             return DnsOverHttps.Builder()
                 .client(client)
-                .url(gatewayDohUrl.toHttpUrl())
+                .url(MainActivity.gatewayDohUrl.toHttpUrl())
                 .includeIPv6(true)
                 .post(false)
                 .resolvePrivateAddresses(true)
