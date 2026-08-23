@@ -108,10 +108,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        EchHttpClient.init(applicationContext)
         networkSettings = loadNetworkSettings()
         client = createClient()
-        HlsEchProxy.start()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "saveCookies" -> {
@@ -166,12 +164,18 @@ class MainActivity : FlutterActivity() {
                     val cookies = getSharedPreferences(preferencesName, Context.MODE_PRIVATE).getString("$cookieKey:$host", "").orEmpty()
                     result.success(cookies.split(';').any { it.trim().substringBefore('=').equals(name, true) })
                 }
-                "request" -> request(call, result, client)
+                "request" -> {
+                    EchHttpClient.init(applicationContext)
+                    request(call, result, client)
+                }
                 "download" -> download(call, result)
                 "hlsProxyUrl" -> {
                     val url = call.argument<String>("url")
                     if (url == null) result.error("invalid_url", "Missing URL", null)
-                    else result.success(HlsEchProxy.proxyUrl(url, call.argument<String>("referer").orEmpty(), call.argument<String>("cookie")))
+                    else {
+                        val port = HlsEchProxy.start()
+                        result.success(HlsEchProxy.url(port, url, call.argument<String>("referer").orEmpty(), call.argument<String>("cookie")))
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -400,6 +404,7 @@ class MainActivity : FlutterActivity() {
         val path = call.argument<String>("path") ?: return result.error("invalid_path", "Missing destination path", null)
         Thread {
             try {
+                EchHttpClient.init(applicationContext)
                 val request = Request.Builder()
                     .url(url)
                     .header("User-Agent", userAgent)
