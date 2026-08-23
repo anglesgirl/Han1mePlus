@@ -40,15 +40,9 @@ final class Han1meHttpClient {
     }()
 
     private var responseCookies: [String: [String: String]] = [:]
-    private var networkSettings = Han1meHttpStore.loadNetworkSettings()
     private let queue = DispatchQueue(label: "com.liar.han1meplus.http", qos: .userInitiated)
 
-    func setNetworkSettings(_ settings: Han1meNetworkSettings) {
-        queue.sync {
-            networkSettings = settings
-            Han1meHttpStore.saveNetworkSettings(settings)
-        }
-    }
+    func setNetworkSettings() {}
 
     func saveCookies(_ cookies: String, url: String) {
         queue.sync { Han1meHttpStore.saveCookies(cookies, url: url) }
@@ -116,21 +110,18 @@ final class Han1meHttpClient {
     }
 
     private func rawBody(urlString: String, headers: [String: String], allowCloudflareRetry: Bool = true) throws -> Data {
-        let settings = networkSettings
         guard let originalURL = URL(string: urlString), let host = originalURL.host else {
             throw HttpError.invalidUrl
         }
-        let resolved = try Han1meDnsResolver.resolve(hostname: host, settings: settings)
-        let targets = resolved ?? [host]
+        let targets = [host]
         var lastError: Error = HttpError.requestFailed("Download failed")
         for target in targets {
             do {
                 let requestURL = rewrite(url: originalURL, host: host, target: target)
-                delegate.trustAllCertificates = resolved != nil
+                delegate.trustAllCertificates = false
                 var request = URLRequest(url: requestURL)
                 request.httpMethod = "GET"
                 request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-                if resolved != nil { request.setValue(host, forHTTPHeaderField: "Host") }
                 for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
                 attachCookies(to: &request, host: host)
                 let (data, response) = try session.syncData(for: request)
@@ -162,22 +153,19 @@ final class Han1meHttpClient {
         json: Bool,
         allowCloudflareRetry: Bool
     ) throws -> Han1meHttpResponse {
-        let settings = networkSettings
         guard let originalURL = URL(string: urlString), let host = originalURL.host else {
             throw HttpError.invalidUrl
         }
-        let resolved = try Han1meDnsResolver.resolve(hostname: host, settings: settings)
-        let targets = resolved ?? [host]
+        let targets = [host]
         var lastError: Error = HttpError.requestFailed("Request failed")
 
         for target in targets {
             do {
                 let requestURL = rewrite(url: originalURL, host: host, target: target)
-                delegate.trustAllCertificates = resolved != nil
+                delegate.trustAllCertificates = false
                 var request = URLRequest(url: requestURL)
                 request.httpMethod = method
                 request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-                if resolved != nil { request.setValue(host, forHTTPHeaderField: "Host") }
                 headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
                 attachCookies(to: &request, host: host)
 

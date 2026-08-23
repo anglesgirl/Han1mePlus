@@ -195,7 +195,18 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
     final settings = await ref.read(settingsProvider.future);
     if (!mounted || version != _loadVersion) return;
     final getchuTrailer = widget.video.id.startsWith('getchu-');
+    final sourceOrigin = Uri.tryParse(source.url)?.origin;
+    final referer = getchuTrailer
+        ? 'https://www.getchu.com/'
+        : sourceOrigin == null || sourceOrigin == 'null'
+        ? '${settings.resolvedBaseUrl}/watch?v=${widget.video.id}'
+        : '$sourceOrigin/';
     final isMp4 = RegExp(r'\.mp4(?:$|\?)', caseSensitive: false).hasMatch(source.url);
+    final isM3u8 = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(source.url);
+    var playbackUrl = source.url;
+    if (isM3u8 && Platform.isAndroid) {
+      playbackUrl = await Han1meHttpClient().hlsProxyUrl(source.url, referer: referer, cookie: getchuTrailer ? 'getchu_adalt_flag=getchu.com; gc=gc' : null);
+    }
     String? localVideoPath;
     if (isMp4 && Platform.isAndroid) {
       final directory = await getTemporaryDirectory();
@@ -210,10 +221,10 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
         : source.url.startsWith('/')
         ? VideoPlayerController.file(File(source.url))
         : VideoPlayerController.networkUrl(
-            Uri.parse(source.url),
+            Uri.parse(playbackUrl),
             httpHeaders: {
               'User-Agent': Han1meApi.userAgent,
-              'Referer': getchuTrailer ? 'https://www.getchu.com/' : '${settings.resolvedBaseUrl}/watch?v=${widget.video.id}',
+              'Referer': referer,
               if (getchuTrailer) 'Cookie': 'getchu_adalt_flag=getchu.com; gc=gc',
             },
           );

@@ -38,15 +38,11 @@ import java.util.concurrent.TimeUnit
 @Keep
 class MainActivity : FlutterActivity() {
     companion object {
+        const val userAgentStatic = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Mobile Safari/537.36"
         const val preferencesName = "han1meplus_http"
         const val cookieKey = "cookies"
-        const val useBuiltInHostsKey = "use_built_in_hosts"
-        const val useDohKey = "use_doh"
-        const val dohPresetKey = "doh_preset"
-        const val dohCustomUrlKey = "doh_custom_url"
-        const val dohBootstrapIpsKey = "doh_bootstrap_ips"
-        const val dohTimeoutSecondsKey = "doh_timeout_seconds"
         const val useEchKey = "use_ech"
+        const val gatewayDohUrl = "https://tgxjjdszvu.cloudflare-gateway.com/dns-query"
 
         fun saveCookies(context: Context, cookies: String, url: String) {
             val preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
@@ -115,6 +111,7 @@ class MainActivity : FlutterActivity() {
         EchHttpClient.init(applicationContext)
         networkSettings = loadNetworkSettings()
         client = createClient()
+        HlsEchProxy.start { networkSettings }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "saveCookies" -> {
@@ -150,13 +147,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "setNetworkSettings" -> {
                     networkSettings = NetworkSettings(
-                        useBuiltInHosts = call.argument<Boolean>("useBuiltInHosts") ?: false,
-                        useDoh = call.argument<Boolean>("useDoh") ?: false,
-                        dohPreset = call.argument<String>("dohPreset") ?: "alidns",
-                        dohCustomUrl = call.argument<String>("dohCustomUrl").orEmpty(),
-                        dohBootstrapIps = call.argument<String>("dohBootstrapIps").orEmpty(),
-                        dohTimeoutSeconds = (call.argument<Int>("dohTimeoutSeconds") ?: 10).coerceIn(1, 60),
-                        useEch = call.argument<Boolean>("useEch") ?: false,
+                        useEch = call.argument<Boolean>("useEch") ?: true,
                     )
                     saveNetworkSettings(networkSettings)
                     client.connectionPool.evictAll()
@@ -177,6 +168,11 @@ class MainActivity : FlutterActivity() {
                 }
                 "request" -> request(call, result, client)
                 "download" -> download(call, result)
+                "hlsProxyUrl" -> {
+                    val url = call.argument<String>("url")
+                    if (url == null) result.error("invalid_url", "Missing URL", null)
+                    else result.success(HlsEchProxy.proxyUrl(url, call.argument<String>("referer").orEmpty(), call.argument<String>("cookie")))
+                }
                 else -> result.notImplemented()
             }
         }
@@ -409,8 +405,11 @@ class MainActivity : FlutterActivity() {
                     .header("User-Agent", userAgent)
                     .header("Referer", "https://hanimeone.me/")
                     .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
-                    .build()
-                nativeEchRequest(request)?.let { response ->
+                (call.argument<Map<String, String>>("headers") ?: emptyMap()).forEach { (name, value) ->
+                    request.header(name, value)
+                }
+                val builtRequest = request.build()
+                nativeEchRequest(builtRequest)?.let { response ->
                     if (response.statusCode !in 200..299) throw IllegalStateException("Image request failed: HTTP ${response.statusCode}")
                     val target = File(path)
                     target.parentFile?.mkdirs()
@@ -419,7 +418,7 @@ class MainActivity : FlutterActivity() {
                     runOnUiThread { result.success(null) }
                     return@Thread
                 }
-                client.newCall(request).execute().use { response ->
+                client.newCall(builtRequest).execute().use { response ->
                     if (!response.isSuccessful) throw IllegalStateException("Image request failed: HTTP ${response.code}")
                     val target = File(path)
                     target.parentFile?.mkdirs()
@@ -446,24 +445,12 @@ class MainActivity : FlutterActivity() {
     private fun loadNetworkSettings(): NetworkSettings {
         val preferences = getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
         return NetworkSettings(
-            useBuiltInHosts = preferences.getBoolean(useBuiltInHostsKey, false),
-            useDoh = preferences.getBoolean(useDohKey, false),
-            dohPreset = preferences.getString(dohPresetKey, "alidns").orEmpty(),
-            dohCustomUrl = preferences.getString(dohCustomUrlKey, "").orEmpty(),
-            dohBootstrapIps = preferences.getString(dohBootstrapIpsKey, "").orEmpty(),
-            dohTimeoutSeconds = preferences.getInt(dohTimeoutSecondsKey, 10).coerceIn(1, 60),
-            useEch = preferences.getBoolean(useEchKey, false),
+            useEch = preferences.getBoolean(useEchKey, true),
         )
     }
 
     private fun saveNetworkSettings(settings: NetworkSettings) {
         getSharedPreferences(preferencesName, Context.MODE_PRIVATE).edit()
-            .putBoolean(useBuiltInHostsKey, settings.useBuiltInHosts)
-            .putBoolean(useDohKey, settings.useDoh)
-            .putString(dohPresetKey, settings.dohPreset)
-            .putString(dohCustomUrlKey, settings.dohCustomUrl)
-            .putString(dohBootstrapIpsKey, settings.dohBootstrapIps)
-            .putInt(dohTimeoutSecondsKey, settings.dohTimeoutSeconds)
             .putBoolean(useEchKey, settings.useEch)
             .apply()
     }
@@ -471,88 +458,38 @@ class MainActivity : FlutterActivity() {
 }
 
 private data class NetworkSettings(
-    val useBuiltInHosts: Boolean = false,
-    val useDoh: Boolean = false,
-    val dohPreset: String = "alidns",
-    val dohCustomUrl: String = "",
-    val dohBootstrapIps: String = "",
-    val dohTimeoutSeconds: Int = 10,
     val useEch: Boolean = false,
 )
 
 private class ConfigurableDns(private val settings: () -> NetworkSettings) : Dns {
     override fun lookup(hostname: String): List<java.net.InetAddress> {
-        val current = settings()
-        if (current.useBuiltInHosts && !current.useDoh && hostname in hosts) {
-            return addresses.map { address(hostname, it) }
-        }
-        val dohUrl = current.dohUrl ?: return Dns.SYSTEM.lookup(hostname)
-        return doh(current, dohUrl).lookup(hostname)
+        return doh().lookup(hostname)
     }
 
-    @Volatile private var cachedSettings: NetworkSettings? = null
     @Volatile private var cachedDns: Dns? = null
 
-    private fun doh(settings: NetworkSettings, url: String): Dns {
-        cachedDns?.takeIf { cachedSettings == settings }?.let { return it }
+    private fun doh(): Dns {
+        cachedDns?.let { return it }
         synchronized(this) {
-            cachedDns?.takeIf { cachedSettings == settings }?.let { return it }
-            val bootstrapIps = settings.bootstrapIps.mapNotNull { runCatching { InetAddress.getByName(it) }.getOrNull() }
+            cachedDns?.let { return it }
             val client = OkHttpClient.Builder()
-                .connectTimeout(settings.dohTimeoutSeconds.toLong(), TimeUnit.SECONDS)
-                .readTimeout(settings.dohTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
                 .build()
-            val builder = DnsOverHttps.Builder()
+            return DnsOverHttps.Builder()
                 .client(client)
-                .url(url.toHttpUrl())
+                .url(gatewayDohUrl.toHttpUrl())
                 .includeIPv6(true)
                 .post(false)
                 .resolvePrivateAddresses(true)
                 .resolvePublicAddresses(true)
-            if (bootstrapIps.isNotEmpty()) builder.bootstrapDnsHosts(bootstrapIps)
-            return builder.build().also {
-                cachedSettings = settings
-                cachedDns = it
-            }
+                .build().also { cachedDns = it }
         }
-    }
-
-    private val NetworkSettings.dohUrl: String?
-        get() = if (!useDoh) null else when (dohPreset) {
-            "alidns" -> "https://dns.alidns.com/dns-query"
-            "dnspod" -> "https://doh.pub/dns-query"
-            "cloudflare" -> "https://cloudflare-dns.com/dns-query"
-            "custom" -> dohCustomUrl.trim().takeIf { it.isNotEmpty() }
-            else -> "https://dns.alidns.com/dns-query"
-        }
-
-    private val NetworkSettings.bootstrapIps: List<String>
-        get() = dohBootstrapIps.split(',', '\n', ';', ' ')
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .distinct()
-            .ifEmpty {
-                when (dohPreset) {
-                    "alidns" -> listOf("223.5.5.5", "223.6.6.6")
-                    "dnspod" -> listOf("1.12.12.12", "120.53.53.53")
-                    "cloudflare" -> listOf("1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001")
-                    else -> emptyList()
-                }
-            }
-
-    private companion object {
-        val hosts = setOf("hanime1.me", "hanime1.com", "hanimeone.me", "javchu.com")
-        val addresses = listOf(
-            "172.64.229.154", "162.159.0.1", "108.162.192.1", "172.64.33.1", "104.19.0.1",
-            "2606:4700:3035::ac43:bb8d", "2606:4700:3030::6815:746", "2606:4700:3030::6815:714",
-        )
-
-        fun address(hostname: String, value: String) = InetAddress.getByAddress(hostname, InetAddress.getByName(value).address)
     }
 }
 
 private val NetworkSettings.echDohUrl: String
-    get() = "https://0kbpekmcr1.cloudflare-gateway.com/dns-query"
+    get() = MainActivity.gatewayDohUrl
 
 private val NetworkSettings.echDohResolve: String
     get() = ""

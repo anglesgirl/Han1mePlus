@@ -59,20 +59,16 @@ class Han1meHttpClient {
     await clearCookies();
   }
 
-  Future<void> setNetworkSettings({required bool useBuiltInHosts, required bool useDoh, required String dohPreset, required String dohCustomUrl, required String dohBootstrapIps, required int dohTimeoutSeconds, required bool useEch}) async {
+  Future<void> setNetworkSettings({required bool useEch}) async {
     if (_isDesktop) {
-      HttpOverrides.global = WindowsHttpOverrides(
-        proxy: await WindowsHttpOverrides.systemProxy(),
-        useBuiltInHosts: useBuiltInHosts,
-        useDoh: useDoh,
-        dohPreset: dohPreset,
-        dohCustomUrl: dohCustomUrl,
-        dohBootstrapIps: dohBootstrapIps,
-        dohTimeoutSeconds: dohTimeoutSeconds,
-      );
       return;
     }
-    await _channel.invokeMethod<void>('setNetworkSettings', {'useBuiltInHosts': useBuiltInHosts, 'useDoh': useDoh, 'dohPreset': dohPreset, 'dohCustomUrl': dohCustomUrl, 'dohBootstrapIps': dohBootstrapIps, 'dohTimeoutSeconds': dohTimeoutSeconds, 'useEch': useEch});
+    await _channel.invokeMethod<void>('setNetworkSettings', {'useEch': useEch});
+  }
+
+  Future<String> hlsProxyUrl(String url, {String referer = '', String? cookie}) async {
+    if (_isDesktop) return url;
+    return await _channel.invokeMethod<String>('hlsProxyUrl', {'url': url, 'referer': referer, if (cookie != null) 'cookie': cookie}) ?? url;
   }
 
   Future<List<String>> echLogs() async => _isDesktop ? const [] : List<String>.from(await _channel.invokeMethod<List<dynamic>>('echLogs') ?? const []);
@@ -83,9 +79,9 @@ class Han1meHttpClient {
 
   Future<Han1meHttpResponse> get(String url, {String? responseCharset, Map<String, String>? headers}) => _request(url, responseCharset: responseCharset, headers: headers);
 
-  Future<void> download(String url, String path) async {
+  Future<void> download(String url, String path, {Map<String, String>? headers}) async {
     if (!_isDesktop) {
-      await _channel.invokeMethod<void>('download', {'url': url, 'path': path});
+      await _channel.invokeMethod<void>('download', {'url': url, 'path': path, if (headers != null) 'headers': headers});
       return;
     }
     final client = _desktopClient();
@@ -94,6 +90,7 @@ class Han1meHttpClient {
       request.headers.set(HttpHeaders.userAgentHeader, userAgent);
       final cookie = _cookiesFor(request.uri);
       if (cookie.isNotEmpty) request.headers.set(HttpHeaders.cookieHeader, cookie);
+      headers?.forEach(request.headers.set);
       final response = await request.close();
       if (response.statusCode < 200 || response.statusCode >= 300) throw HttpException('Download failed: HTTP ${response.statusCode}', uri: request.uri);
       final output = File(path);

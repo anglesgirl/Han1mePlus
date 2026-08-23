@@ -29,8 +29,7 @@ class NetworkSettingsPage extends ConsumerWidget {
        SettingsCardList(title: l10n.general, children: [
         SettingsCardItem(title: l10n.site, subtitle: settings.comicMode ? 'https://hanimeone.me' : settings.baseUrl, leading: const Icon(Icons.language_outlined), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/settings/site')),
        SettingsCardItem(title: l10n.customMirrorSite, subtitle: settings.mirrorActive ? settings.customMirrorSite : l10n.customMirrorSiteHint, leading: const Icon(Icons.link_outlined), trailing: const Icon(Icons.chevron_right), onTap: () => _showMirrorSettings(context, ref, settings, controller)),
-       SettingsCardItem(title: l10n.useBuiltInHosts, subtitle: l10n.useBuiltInHostsDescription, leading: const Icon(Icons.dns_outlined), trailing: Switch(value: settings.useBuiltInHosts, onChanged: (value) => controller.saveChanges((current) => current.copyWith(useBuiltInHosts: value, useDoh: value ? false : current.useDoh)))),
-       SettingsCardItem(title: l10n.doh, subtitle: _dohSummary(l10n, settings), leading: const Icon(Icons.security_outlined), trailing: const Icon(Icons.chevron_right), onTap: () => _showDohSettings(context, settings, controller)),
+
         if (Platform.isAndroid) SettingsCardItem(title: l10n.useEch, subtitle: l10n.useEchDescription, leading: const Icon(Icons.visibility_off_outlined), trailing: Switch(value: settings.useEch, onChanged: (value) => controller.saveChanges((current) => current.copyWith(useEch: value)))),
         if (Platform.isAndroid) SettingsCardItem(title: l10n.echLogs, subtitle: l10n.echLogsDescription, leading: const Icon(Icons.receipt_long_outlined), trailing: const Icon(Icons.chevron_right), onTap: () => _showEchLogs(context)),
       ]),
@@ -67,7 +66,6 @@ class NetworkSettingsPage extends ConsumerWidget {
     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.exportCompleted)));
   }
 
-  String _dohSummary(AppLocalizations l10n, AppSettings settings) => !settings.useDoh ? l10n.dohDisabled : settings.dohPreset == 'custom' ? settings.dohCustomUrl.ifEmpty(l10n.custom) : _dohPresets[settings.dohPreset]!;
 
   Future<void> _showMirrorSettings(BuildContext context, WidgetRef ref, AppSettings settings, SettingsController controller) async {
     final result = await showDialog<_MirrorSettings>(context: context, builder: (_) => _MirrorSettingsDialog(settings: settings));
@@ -77,10 +75,6 @@ class NetworkSettingsPage extends ConsumerWidget {
     ref.invalidate(homeSectionsProvider);
   }
 
-  Future<void> _showDohSettings(BuildContext context, AppSettings settings, SettingsController controller) async {
-    final result = await showDialog<_DohSettings>(context: context, builder: (_) => _DohSettingsDialog(settings: settings));
-    if (result != null) await controller.saveChanges((current) => current.copyWith(useDoh: result.enabled, useBuiltInHosts: result.enabled ? false : current.useBuiltInHosts, dohPreset: result.preset, dohCustomUrl: result.customUrl, dohBootstrapIps: result.bootstrapIps, dohTimeoutSeconds: result.timeoutSeconds));
-  }
 
   Future<void> _showEchLogs(BuildContext context) async {
     final logs = await Han1meHttpClient().echLogs();
@@ -91,21 +85,6 @@ class NetworkSettingsPage extends ConsumerWidget {
 
 }
 
-const _dohPresets = {'alidns': 'AliDNS', 'dnspod': 'DNSPod', 'cloudflare': 'Cloudflare'};
-
-class _DohSettings { const _DohSettings({required this.enabled, required this.preset, required this.customUrl, required this.bootstrapIps, required this.timeoutSeconds}); final bool enabled; final String preset; final String customUrl; final String bootstrapIps; final int timeoutSeconds; }
-
-class _DohSettingsDialog extends StatefulWidget { const _DohSettingsDialog({required this.settings}); final AppSettings settings; @override State<_DohSettingsDialog> createState() => _DohSettingsDialogState(); }
-
-class _DohSettingsDialogState extends State<_DohSettingsDialog> {
-  late var _enabled = widget.settings.useDoh;
-  late var _preset = widget.settings.dohPreset;
-  late final _customUrl = TextEditingController(text: widget.settings.dohCustomUrl);
-  late final _bootstrapIps = TextEditingController(text: widget.settings.dohBootstrapIps);
-  late final _timeout = TextEditingController(text: widget.settings.dohTimeoutSeconds.toString());
-  @override void dispose() { _customUrl.dispose(); _bootstrapIps.dispose(); _timeout.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) { final l10n = AppLocalizations.of(context)!; return AlertDialog(title: Text(l10n.dohSettings), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: Text(l10n.useDoh), value: _enabled, onChanged: (value) => setState(() => _enabled = value)), DropdownButtonFormField(value: _preset, decoration: InputDecoration(labelText: l10n.dohPreset), items: [..._dohPresets.entries.map((item) => DropdownMenuItem(value: item.key, child: Text(item.value))), DropdownMenuItem(value: 'custom', child: Text(l10n.custom))], onChanged: (value) => setState(() => _preset = value!)), const SizedBox(height: 12), TextField(controller: _customUrl, enabled: _preset == 'custom', keyboardType: TextInputType.url, decoration: InputDecoration(labelText: l10n.dohCustomUrl)), const SizedBox(height: 12), TextField(controller: _bootstrapIps, decoration: InputDecoration(labelText: l10n.dohBootstrapIps, helperText: l10n.dohBootstrapIpsDescription)), const SizedBox(height: 12), TextField(controller: _timeout, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: l10n.dohTimeoutSeconds, helperText: l10n.dohTimeoutSecondsDescription))])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel)), FilledButton(onPressed: () => Navigator.pop(context, _DohSettings(enabled: _enabled, preset: _preset, customUrl: _customUrl.text.trim(), bootstrapIps: _bootstrapIps.text.trim(), timeoutSeconds: (int.tryParse(_timeout.text) ?? 10).clamp(1, 60) as int)), child: Text(l10n.save))]); }
-}
 
 class _MirrorSettings { const _MirrorSettings({required this.enabled, required this.url, required this.appendPath}); final bool enabled; final String url; final bool appendPath; }
 
@@ -192,6 +171,3 @@ class _SliderTile extends SettingsSliderItem {
   _SliderTile({required IconData icon, required String title, String? subtitle, required double value, required double min, required double max, required int divisions, required String label, required ValueChanged<double> onChanged})
       : super(leading: Icon(icon), title: title, subtitle: subtitle, value: value, min: min, max: max, divisions: divisions, label: label, onChanged: onChanged);
 }
-
-
-extension on String { String ifEmpty(String fallback) => isEmpty ? fallback : this; }

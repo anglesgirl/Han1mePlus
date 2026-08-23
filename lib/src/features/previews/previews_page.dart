@@ -23,6 +23,8 @@ class PreviewsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
     final selectedMonth = _PreviewMonth.parse(month);
+    final settings = ref.watch(settingsProvider).valueOrNull;
+    final headers = {'Referer': '${Uri.parse(settings?.resolvedBaseUrl ?? 'https://hanimeone.me').origin}/'};
     final result = ref.watch(previewsProvider(month));
     return Scaffold(
       appBar: AppBar(
@@ -75,8 +77,8 @@ class PreviewsPage extends ConsumerWidget {
                     )
                   : CustomScrollView(
                       slivers: [
-                        SliverToBoxAdapter(child: _PreviewHeader(feed: feed)),
-                        SliverList.builder(itemCount: feed.items.length, itemBuilder: (context, index) => _PreviewTile(item: feed.items[index])),
+                        SliverToBoxAdapter(child: _PreviewHeader(feed: feed, headers: headers)),
+                        SliverList.builder(itemCount: feed.items.length, itemBuilder: (context, index) => _PreviewTile(item: feed.items[index], headers: headers)),
                         const SliverToBoxAdapter(child: SizedBox(height: 24)),
                       ],
                     ),
@@ -189,9 +191,10 @@ class _PreviewUnavailable extends StatelessWidget {
 }
 
 class _PreviewHeader extends StatelessWidget {
-  const _PreviewHeader({required this.feed});
+  const _PreviewHeader({required this.feed, required this.headers});
 
   final PreviewFeed feed;
+  final Map<String, String> headers;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -200,7 +203,7 @@ class _PreviewHeader extends StatelessWidget {
           if (feed.coverUrl != null && feed.coverUrl!.isNotEmpty)
             AspectRatio(
               aspectRatio: 16 / 8,
-              child: CachedNetworkImage(imageUrl: feed.coverUrl!, fit: BoxFit.cover, memCacheWidth: 960, fadeInDuration: Duration.zero),
+              child: CachedNetworkImage(imageUrl: feed.coverUrl!, httpHeaders: headers, fit: BoxFit.cover, memCacheWidth: 960, fadeInDuration: Duration.zero),
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -212,9 +215,10 @@ class _PreviewHeader extends StatelessWidget {
 }
 
 class _PreviewTile extends StatelessWidget {
-  const _PreviewTile({required this.item});
+  const _PreviewTile({required this.item, required this.headers});
 
   final PreviewItem item;
+  final Map<String, String> headers;
 
   @override
   Widget build(BuildContext context) {
@@ -236,7 +240,7 @@ class _PreviewTile extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    CachedNetworkImage(imageUrl: item.coverUrl, fit: BoxFit.cover, memCacheWidth: 720, fadeInDuration: Duration.zero),
+                    CachedNetworkImage(imageUrl: item.coverUrl, httpHeaders: headers, fit: BoxFit.cover, memCacheWidth: 720, fadeInDuration: Duration.zero),
                     DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -299,10 +303,10 @@ class _PreviewTile extends StatelessWidget {
                           separatorBuilder: (context, index) => const SizedBox(width: 8),
                           itemBuilder: (context, index) => InkWell(
                             borderRadius: BorderRadius.circular(6),
-                            onTap: () => _showPreviewImages(context, item, index),
+                            onTap: () => _showPreviewImages(context, item, index, headers),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(6),
-                              child: AspectRatio(aspectRatio: 4 / 3, child: CachedNetworkImage(imageUrl: item.previewImages[index], fit: BoxFit.cover, memCacheWidth: 240, fadeInDuration: Duration.zero)),
+                              child: AspectRatio(aspectRatio: 4 / 3, child: CachedNetworkImage(imageUrl: item.previewImages[index], httpHeaders: headers, fit: BoxFit.cover, memCacheWidth: 240, fadeInDuration: Duration.zero)),
                             ),
                           ),
                         ),
@@ -334,16 +338,17 @@ class _PreviewBadge extends StatelessWidget {
       );
 }
 
-Future<void> _showPreviewImages(BuildContext context, PreviewItem item, int initialPage) => showDialog<void>(
+Future<void> _showPreviewImages(BuildContext context, PreviewItem item, int initialPage, Map<String, String> headers) => showDialog<void>(
       context: context,
-      builder: (context) => _PreviewImagesDialog(item: item, initialPage: initialPage),
+      builder: (context) => _PreviewImagesDialog(item: item, initialPage: initialPage, headers: headers),
     );
 
 class _PreviewImagesDialog extends StatefulWidget {
-  const _PreviewImagesDialog({required this.item, required this.initialPage});
+  const _PreviewImagesDialog({required this.item, required this.initialPage, required this.headers});
 
   final PreviewItem item;
   final int initialPage;
+  final Map<String, String> headers;
 
   @override
   State<_PreviewImagesDialog> createState() => _PreviewImagesDialogState();
@@ -370,7 +375,7 @@ class _PreviewImagesDialogState extends State<_PreviewImagesDialog> {
                 itemCount: widget.item.previewImages.length,
                 onPageChanged: (value) => setState(() => _index = value),
                 itemBuilder: (context, index) => InteractiveViewer(
-                  child: Center(child: CachedNetworkImage(imageUrl: widget.item.previewImages[index], fit: BoxFit.contain, fadeInDuration: Duration.zero)),
+                  child: Center(child: CachedNetworkImage(imageUrl: widget.item.previewImages[index], httpHeaders: widget.headers, fit: BoxFit.contain, fadeInDuration: Duration.zero)),
                 ),
               ),
               Positioned(

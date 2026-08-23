@@ -79,16 +79,11 @@ class AppSettings {
     this.blockedCommentKeywords = const [],
     this.comicMode = false,
     this.videoBaseUrl = 'https://hanime1.com',
-    this.useBuiltInHosts = false,
     this.useCustomMirrorSite = false,
     this.customMirrorSite = '',
     this.appendCustomMirrorPath = true,
-    this.useDoh = false,
-    this.dohPreset = 'alidns',
-    this.dohCustomUrl = '',
-    this.dohBootstrapIps = '',
-    this.dohTimeoutSeconds = 10,
-    this.useEch = false,
+
+    this.useEch = true,
     this.useHorizontalSearchCards = true,
     this.searchCardsPerRow = 2,
     this.useCompactSearchCards = true,
@@ -151,15 +146,10 @@ class AppSettings {
   final List<String> blockedCommentKeywords;
   final bool comicMode;
   final String videoBaseUrl;
-  final bool useBuiltInHosts;
   final bool useCustomMirrorSite;
   final String customMirrorSite;
   final bool appendCustomMirrorPath;
-  final bool useDoh;
-  final String dohPreset;
-  final String dohCustomUrl;
-  final String dohBootstrapIps;
-  final int dohTimeoutSeconds;
+
   final bool useEch;
   final bool useHorizontalSearchCards;
   final int searchCardsPerRow;
@@ -243,15 +233,10 @@ class AppSettings {
         'blockedCommentKeywords': blockedCommentKeywords,
         'comicMode': comicMode,
         'videoBaseUrl': videoBaseUrl,
-        'useBuiltInHosts': useBuiltInHosts,
         'useCustomMirrorSite': useCustomMirrorSite,
         'customMirrorSite': customMirrorSite,
         'appendCustomMirrorPath': appendCustomMirrorPath,
-        'useDoh': useDoh,
-        'dohPreset': dohPreset,
-        'dohCustomUrl': dohCustomUrl,
-        'dohBootstrapIps': dohBootstrapIps,
-        'dohTimeoutSeconds': dohTimeoutSeconds,
+
         'useEch': useEch,
         'useHorizontalSearchCards': useHorizontalSearchCards,
         'searchCardsPerRow': searchCardsPerRow,
@@ -316,16 +301,11 @@ class AppSettings {
         blockedCommentKeywords: (json['blockedCommentKeywords'] as List? ?? const []).whereType<String>().toList(),
         comicMode: json['comicMode'] as bool? ?? false,
         videoBaseUrl: json['videoBaseUrl'] as String? ?? (json['baseUrl'] == 'https://hanimeone.me' ? 'https://hanime1.com' : json['baseUrl'] as String? ?? 'https://hanime1.com'),
-        useBuiltInHosts: json['useBuiltInHosts'] as bool? ?? Platform.isWindows || Platform.isLinux || Platform.isMacOS,
         useCustomMirrorSite: json['useCustomMirrorSite'] as bool? ?? false,
         customMirrorSite: _mirrorUrl(json['customMirrorSite'] as String?),
         appendCustomMirrorPath: json['appendCustomMirrorPath'] as bool? ?? true,
-        useDoh: json['useDoh'] as bool? ?? false,
-        dohPreset: _dohPreset(json['dohPreset'] as String?),
-        dohCustomUrl: json['dohCustomUrl'] as String? ?? '',
-        dohBootstrapIps: json['dohBootstrapIps'] as String? ?? '',
-        dohTimeoutSeconds: (json['dohTimeoutSeconds'] as int? ?? 10).clamp(1, 60) as int,
-        useEch: json['useEch'] as bool? ?? false,
+
+        useEch: json['useEch'] as bool? ?? true,
         useHorizontalSearchCards: json['useHorizontalSearchCards'] as bool? ?? true,
         searchCardsPerRow: (json['searchCardsPerRow'] as int? ?? 2).clamp(1, 3) as int,
         useCompactSearchCards: json['useCompactSearchCards'] as bool? ?? true,
@@ -387,10 +367,7 @@ class AppSettings {
     return RegExp(r'^[0-9A-F]{6}$').hasMatch(normalized) ? normalized : '62539F';
   }
 
-  static String _dohPreset(String? value) => switch (value) {
-        'alidns' || 'dnspod' || 'cloudflare' || 'custom' => value!,
-        _ => 'alidns',
-      };
+  static String _dohPreset(String? value) => 'custom';
 
   static String _mirrorUrl(String? value) {
     final normalized = value?.trim().replaceAll(RegExp(r'/+$'), '') ?? '';
@@ -434,15 +411,10 @@ class AppSettings {
     List<String>? blockedCommentKeywords,
     bool? comicMode,
     String? videoBaseUrl,
-    bool? useBuiltInHosts,
     bool? useCustomMirrorSite,
     String? customMirrorSite,
     bool? appendCustomMirrorPath,
-    bool? useDoh,
-    String? dohPreset,
-    String? dohCustomUrl,
-    String? dohBootstrapIps,
-    int? dohTimeoutSeconds,
+
     bool? useEch,
     bool? useHorizontalSearchCards,
     int? searchCardsPerRow,
@@ -506,15 +478,10 @@ class AppSettings {
         blockedCommentKeywords: blockedCommentKeywords ?? this.blockedCommentKeywords,
         comicMode: comicMode ?? this.comicMode,
         videoBaseUrl: videoBaseUrl ?? this.videoBaseUrl,
-        useBuiltInHosts: useBuiltInHosts ?? this.useBuiltInHosts,
         useCustomMirrorSite: useCustomMirrorSite ?? this.useCustomMirrorSite,
         customMirrorSite: customMirrorSite ?? this.customMirrorSite,
         appendCustomMirrorPath: appendCustomMirrorPath ?? this.appendCustomMirrorPath,
-        useDoh: useDoh ?? this.useDoh,
-        dohPreset: dohPreset ?? this.dohPreset,
-        dohCustomUrl: dohCustomUrl ?? this.dohCustomUrl,
-        dohBootstrapIps: dohBootstrapIps ?? this.dohBootstrapIps,
-        dohTimeoutSeconds: dohTimeoutSeconds ?? this.dohTimeoutSeconds,
+
         useEch: useEch ?? this.useEch,
         useHorizontalSearchCards: useHorizontalSearchCards ?? this.useHorizontalSearchCards,
         searchCardsPerRow: searchCardsPerRow ?? this.searchCardsPerRow,

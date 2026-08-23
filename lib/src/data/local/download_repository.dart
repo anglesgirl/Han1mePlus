@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import '../../core/settings.dart';
@@ -218,14 +218,24 @@ class DownloadController extends AsyncNotifier<DownloadState> {
     try {
       final directory = Directory(path.join(_root.path, task.videoCode));
       await directory.create(recursive: true);
+      final settings = await ref.read(settingsProvider.future);
+      final headers = <String, String>{
+        'Referer': '${settings.resolvedBaseUrl}/watch?v=${detail.id}',
+        'User-Agent': Han1meHttpClient.userAgent,
+      };
       final meta = File(path.join(directory.path, 'detail.json'));
       await meta.writeAsString(jsonEncode({'videoCode': detail.id, 'title': detail.title, 'coverUrl': detail.coverUrl, 'artistName': detail.artist, 'genre': detail.genre, 'viewsText': detail.views, 'uploadDate': detail.uploadDate, 'introduction': detail.description, 'tags': detail.tags.map((tag) => tag.name).toList(), 'sourceQuality': source.quality, 'sourceUrl': source.url}));
       await _replace(task.id, (value) => value.copyWith(status: DownloadStatus.downloading));
-      final localCoverPath = await _downloadCover(detail.coverUrl, directory);
+      final localCoverPath = await _downloadCover(detail.coverUrl, directory, headers);
       if (localCoverPath != null) await _replace(task.id, (value) => value.copyWith(localCoverPath: localCoverPath));
       final quality = source.quality.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_');
-      final video = File(path.join(directory.path, 'video_$quality.mp4'));
-      await _downloadVideo(source.url, video, task.id);
+      final hls = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(source.url);
+      final video = File(path.join(directory.path, 'video_$quality.${hls ? 'm3u8' : 'mp4'}'));
+      if (hls) {
+        await _downloadHls(source.url, video, task.id, headers);
+      } else {
+        await _downloadVideo(source.url, video, task.id, headers);
+      }
       await _replace(task.id, (value) => value.copyWith(status: DownloadStatus.completed, progress: 1, localVideoPath: video.path, localMetaPath: meta.path, clearError: true));
     } catch (error) {
       await _replace(task.id, (value) => value.copyWith(status: DownloadStatus.failed, errorMessage: '$error'));
@@ -234,49 +244,67 @@ class DownloadController extends AsyncNotifier<DownloadState> {
     }
   }
 
-  Future<void> _downloadVideo(String url, File destination, String taskId) async {
-    final partial = File('${destination.path}.part');
-    final received = await partial.exists() ? await partial.length() : 0;
-    final response = await Dio().get<ResponseBody>(url, options: Options(responseType: ResponseType.stream, headers: received > 0 ? {'Range': 'bytes=$received-'} : null));
-    final rangeAccepted = response.statusCode == 206;
-    if (!rangeAccepted && received > 0) {
-      await partial.delete();
-      return _downloadVideo(url, destination, taskId);
-    }
-    final total = (response.data?.contentLength ?? -1) < 0 ? -1 : (rangeAccepted ? received : 0) + response.data!.contentLength;
-    var downloaded = received;
-    var windowStart = DateTime.now();
-    var windowBytes = 0;
-    final sink = partial.openWrite(mode: received > 0 && rangeAccepted ? FileMode.append : FileMode.write);
-    try {
-      await for (final chunk in response.data!.stream) {
-        sink.add(chunk);
-        downloaded += chunk.length;
-        windowBytes += chunk.length;
-        await _replace(taskId, (value) => value.copyWith(progress: total <= 0 ? 0 : downloaded / total, downloadedBytes: downloaded, totalBytes: total));
-        final limit = ref.read(settingsProvider).value?.downloadSpeedLimitMbps ?? 0;
-        if (limit > 0) {
-          final elapsed = DateTime.now().difference(windowStart);
-          final target = Duration(microseconds: (windowBytes * Duration.microsecondsPerSecond / (limit * 1024 * 1024)).round());
-          if (target > elapsed) await Future<void>.delayed(target - elapsed);
-          if (DateTime.now().difference(windowStart) >= const Duration(seconds: 1)) {
-            windowStart = DateTime.now();
-            windowBytes = 0;
-          }
-        }
-      }
-    } finally {
-      await sink.close();
-    }
-    if (await destination.exists()) await destination.delete();
-    await partial.rename(destination.path);
+  Future<void> _downloadVideo(String url, File destination, String taskId, Map<String, String> headers) async {
+    await Han1meHttpClient().download(url, destination.path, headers: headers);
+    final length = await destination.length();
+    await _replace(taskId, (value) => value.copyWith(progress: 1, downloadedBytes: length, totalBytes: length));
   }
 
-  Future<String?> _downloadCover(String? url, Directory directory) async {
+  Future<void> _downloadHls(String url, File destination, String taskId, Map<String, String> headers) async {
+    final fetched = <String>{};
+
+    Future<void> savePlaylist(String playlistUrl, File output) async {
+      if (!fetched.add(playlistUrl)) return;
+      final response = await Han1meHttpClient().get(playlistUrl, headers: headers);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('HLS playlist request failed: HTTP ${response.statusCode}', uri: Uri.parse(playlistUrl));
+      }
+      final lines = response.body.split(RegExp(r'\r?\n'));
+      final rewritten = <String>[];
+      var index = 0;
+      for (final line in lines) {
+        final value = line.trim();
+        if (value.isEmpty) {
+          rewritten.add(line);
+          continue;
+        }
+        if (value.startsWith('#')) {
+          final match = RegExp(r'URI="([^"]+)"').firstMatch(line);
+          if (match != null) {
+            final resolved = Uri.parse(playlistUrl).resolve(match.group(1)!).toString();
+            final key = File(path.join(output.parent.path, 'key_${index++}.bin'));
+            await Han1meHttpClient().download(resolved, key.path, headers: headers);
+            rewritten.add(line.replaceFirst(match.group(1)!, key.uri.pathSegments.last));
+          } else {
+            rewritten.add(line);
+          }
+          continue;
+        }
+        final resolved = Uri.parse(playlistUrl).resolve(value).toString();
+        final isPlaylist = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(resolved);
+        final child = isPlaylist
+            ? File(path.join(output.parent.path, 'playlist_${index++}', 'index.m3u8'))
+            : File(path.join(output.parent.path, 'segment_${index++}.bin'));
+        if (child.path.endsWith('.m3u8')) {
+          await savePlaylist(resolved, child);
+        } else {
+          await Han1meHttpClient().download(resolved, child.path, headers: headers);
+        }
+        rewritten.add(path.relative(child.path, from: output.parent.path).replaceAll('\\', '/'));
+        await _replace(taskId, (current) => current.copyWith(progress: 0, downloadedBytes: 0, totalBytes: -1));
+      }
+      await output.parent.create(recursive: true);
+      await output.writeAsString(rewritten.join('\n'), flush: true);
+    }
+
+    await savePlaylist(url, destination);
+  }
+
+  Future<String?> _downloadCover(String? url, Directory directory, Map<String, String> headers) async {
     if (url == null || url.isEmpty) return null;
     final cover = File(path.join(directory.path, 'cover.jpg'));
     try {
-      await Dio().download(url, cover.path);
+      await Han1meHttpClient().download(url, cover.path, headers: headers);
       return cover.path;
     } catch (_) {
       return null;

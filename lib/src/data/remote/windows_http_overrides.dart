@@ -1,27 +1,8 @@
 import 'dart:io';
 
-import 'windows_connection_factory.dart';
 import 'windows_proxy.dart';
 
 class WindowsHttpOverrides extends HttpOverrides {
-  WindowsHttpOverrides({
-    required this.proxy,
-    required this.useBuiltInHosts,
-    required this.useDoh,
-    required this.dohPreset,
-    required this.dohCustomUrl,
-    required this.dohBootstrapIps,
-    required this.dohTimeoutSeconds,
-  });
-
-  final String proxy;
-  final bool useBuiltInHosts;
-  final bool useDoh;
-  final String dohPreset;
-  final String dohCustomUrl;
-  final String dohBootstrapIps;
-  final int dohTimeoutSeconds;
-
   static Future<String> systemProxy() async {
     final environmentProxy = Platform.environment['HTTPS_PROXY'] ??
         Platform.environment['https_proxy'] ??
@@ -59,27 +40,6 @@ class WindowsHttpOverrides extends HttpOverrides {
     }
   }
 
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    final client = super.createHttpClient(context)
-      ..connectionTimeout = const Duration(seconds: 20)
-      ..idleTimeout = const Duration(seconds: 30);
-    if (useBuiltInHosts || useDoh) {
-      client.connectionFactory = WindowsConnectionFactory(
-        useBuiltInHosts: useBuiltInHosts,
-        useDoh: useDoh,
-        dohPreset: dohPreset,
-        dohCustomUrl: dohCustomUrl,
-        dohBootstrapIps: dohBootstrapIps,
-        dohTimeoutSeconds: dohTimeoutSeconds,
-      ).call;
-    }
-    client.findProxy = (_) => proxy;
-    if (useBuiltInHosts) {
-      client.badCertificateCallback = (cert, host, port) => WindowsConnectionFactory.hanimeHosts.contains(host);
-    }
-    return client;
-  }
 
   static Future<String> _linuxSystemProxy() async {
     try {

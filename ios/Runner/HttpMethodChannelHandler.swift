@@ -48,19 +48,7 @@ final class HttpMethodChannelHandler {
             clearWebViewCookies(result: result)
 
         case "setNetworkSettings":
-            guard let args = call.arguments as? [String: Any] else {
-                result(FlutterError(code: "invalid_args", message: "Missing settings", details: nil))
-                return
-            }
-            let settings = Han1meNetworkSettings(
-                useBuiltInHosts: args["useBuiltInHosts"] as? Bool ?? false,
-                useDoh: args["useDoh"] as? Bool ?? false,
-                dohPreset: args["dohPreset"] as? String ?? "alidns",
-                dohCustomUrl: args["dohCustomUrl"] as? String ?? "",
-                dohBootstrapIps: args["dohBootstrapIps"] as? String ?? "",
-                dohTimeoutSeconds: min(max(args["dohTimeoutSeconds"] as? Int ?? 10, 1), 60)
-            )
-            client.setNetworkSettings(settings)
+            client.setNetworkSettings()
             result(nil)
 
         case "hasCookie":
