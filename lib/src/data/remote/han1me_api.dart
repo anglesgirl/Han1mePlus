@@ -159,14 +159,26 @@ class Han1meApi {
   Future<VideoDetail> video(String baseUrl, String id) async {
     final document = await _document('$baseUrl/watch?v=$id', referer: '$baseUrl/');
     final player = document.querySelector('video#player');
-    final sources = (player == null ? const <dom.Element>[] : player.querySelectorAll('source'))
-        .map((source) => VideoSource(
-               quality: source.attributes['size'] ?? 'Default',
-              url: _absolute(baseUrl, source.attributes['src']),
-              type: source.attributes['type'],
-            ))
-        .where((source) => source.url.isNotEmpty)
-        .toList();
+    final sourceElements = player?.querySelectorAll('source') ?? const <dom.Element>[];
+    final sourceCandidates = <({String url, String quality, String? type})>[];
+    void addCandidate(String? raw, String quality, String? type) {
+      final url = _absolute(baseUrl, raw?.trim());
+      if (url.isEmpty || sourceCandidates.any((item) => item.url == url)) return;
+      sourceCandidates.add((url: url, quality: quality, type: type));
+    }
+    for (final source in sourceElements) {
+      final quality = source.attributes['size'] ?? source.attributes['label'] ?? source.attributes['res'] ?? 'Default';
+      final raw = source.attributes['src'] ?? source.attributes['data-src'] ?? source.attributes['data-url'] ?? source.attributes['file'];
+      addCandidate(raw, quality, source.attributes['type']);
+    }
+    final playerRaw = player?.attributes['src'] ?? player?.attributes['data-src'] ?? player?.attributes['data-url'];
+    addCandidate(playerRaw, 'Default', player?.attributes['type']);
+    // Some pages inject the player URL into an inline script instead of HTML attributes.
+    final scriptText = document.querySelectorAll('script').map((script) => script.text.replaceAll(r'\/', '/')).join('\n');
+    for (final match in RegExp(r'''(?:https?:)?//[^\s"'\\]+?\.(?:m3u8|mp4)(?:\?[^\s"'\\]*)?''', caseSensitive: false).allMatches(scriptText)) {
+      addCandidate(match.group(0), 'Default', null);
+    }
+    final sources = sourceCandidates.map((item) => VideoSource(quality: item.quality, url: item.url, type: item.type)).toList();
     final title = (document.querySelector('meta[property="og:title"]')?.attributes['content'] ?? document.querySelector('title')?.text ?? '').trim();
     final finalTitle = title.contains('- Hanime1.me') || title.contains('- H\u52d5\u6f2b/\u88cf\u756a') ? title.split(' - ').first.trim() : title;
     final cover = _absolute(baseUrl, player?.attributes['poster'] ?? document.querySelector('meta[property="og:image"]')?.attributes['content']);

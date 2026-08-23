@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:m3e_core/m3e_core.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../l10n/app_localizations.dart';
@@ -201,24 +199,12 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
         : sourceOrigin == null || sourceOrigin == 'null'
         ? '${settings.resolvedBaseUrl}/watch?v=${widget.video.id}'
         : '$sourceOrigin/';
-    final isMp4 = RegExp(r'\.mp4(?:$|\?)', caseSensitive: false).hasMatch(source.url);
-    final isM3u8 = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(source.url);
+    final isM3u8 = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(source.url) || source.type?.toLowerCase().contains('mpegurl') == true;
     var playbackUrl = source.url;
     if (isM3u8 && Platform.isAndroid) {
       playbackUrl = await Han1meHttpClient().hlsProxyUrl(source.url, referer: referer, cookie: getchuTrailer ? 'getchu_adalt_flag=getchu.com; gc=gc' : null);
     }
-    String? localVideoPath;
-    if (isMp4 && Platform.isAndroid) {
-      final directory = await getTemporaryDirectory();
-      localVideoPath = path.join(directory.path, 'han1me-video-cache', '${source.url.hashCode}.mp4');
-      final file = File(localVideoPath);
-      if (!await file.exists() || await file.length() == 0) {
-        await Han1meHttpClient().download(source.url, localVideoPath);
-      }
-    }
-    final controller = localVideoPath != null
-        ? VideoPlayerController.file(File(localVideoPath))
-        : source.url.startsWith('/')
+    final controller = source.url.startsWith('/')
         ? VideoPlayerController.file(File(source.url))
         : VideoPlayerController.networkUrl(
             Uri.parse(playbackUrl),

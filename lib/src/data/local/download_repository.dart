@@ -4,6 +4,7 @@ import 'dart:io';
 
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hls2mp4_flutter/hls2mp4_flutter.dart';
 import 'package:path/path.dart' as path;
 import '../../core/settings.dart';
 import '../../core/platform_paths.dart';
@@ -231,10 +232,24 @@ class DownloadController extends AsyncNotifier<DownloadState> {
       final localCoverPath = await _downloadCover(detail.coverUrl, directory, headers);
       if (localCoverPath != null) await _replace(task.id, (value) => value.copyWith(localCoverPath: localCoverPath));
       final quality = source.quality.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_');
-      final hls = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(source.url);
-      final video = File(path.join(directory.path, 'video_$quality.${hls ? 'm3u8' : 'mp4'}'));
+      final hls = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(source.url) || source.type?.toLowerCase().contains('mpegurl') == true;
+      final playlist = File(path.join(directory.path, 'video_$quality.m3u8'));
+      final video = File(path.join(directory.path, 'video_$quality.mp4'));
       if (hls) {
-        await _downloadHls(source.url, video, task.id, headers);
+        await _downloadHls(source.url, playlist, task.id, headers);
+        final proxyUrl = Platform.isAndroid
+            ? await Han1meHttpClient().hlsProxyUrl(source.url, referer: referer, cookie: headers['Cookie'])
+            : source.url;
+        final result = await Hls2Mp4Converter.convert(
+          inputUrl: proxyUrl,
+          outputPath: video.path,
+          timeoutMs: 60000,
+          maxRetries: 3,
+          onProgress: (progress) => _replace(task.id, (current) => current.copyWith(progress: progress.fraction.clamp(0, 1).toDouble())),
+        );
+        if (!result.success || !await video.exists() || await video.length() == 0) {
+          throw StateError('HLS to MP4 conversion failed: ${result.errorMessage ?? 'unknown error'}');
+        }
       } else {
         await _downloadVideo(source.url, video, task.id, headers);
       }
