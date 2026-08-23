@@ -16,6 +16,10 @@ if (localPropertiesFile.exists()) {
 
 val flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "17"
 val flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.1.6"
+val crashR2Endpoint = System.getenv("HAN1ME_CRASH_R2_ENDPOINT") ?: ""
+val crashR2Bucket = System.getenv("HAN1ME_CRASH_R2_BUCKET") ?: ""
+val crashR2AccessKey = System.getenv("HAN1ME_CRASH_R2_ACCESS_KEY") ?: ""
+val crashR2SecretKey = System.getenv("HAN1ME_CRASH_R2_SECRET_KEY") ?: ""
 
 android {
     namespace = "com.liar.han1meplus"
@@ -39,8 +43,15 @@ android {
         targetSdk = 37
         versionCode = flutterVersionCode.toInt()
         versionName = flutterVersionName
+        buildConfigField("String", "CRASH_R2_ENDPOINT", "\"$crashR2Endpoint\"")
+        buildConfigField("String", "CRASH_R2_BUCKET", "\"$crashR2Bucket\"")
+        buildConfigField("String", "CRASH_R2_ACCESS_KEY", "\"$crashR2AccessKey\"")
+        buildConfigField("String", "CRASH_R2_SECRET_KEY", "\"$crashR2SecretKey\"")
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
