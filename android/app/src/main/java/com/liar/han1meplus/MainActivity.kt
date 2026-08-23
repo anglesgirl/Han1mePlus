@@ -379,7 +379,7 @@ class MainActivity : FlutterActivity() {
 
     private fun nativeEchRequest(request: Request): EchResponse? {
         val settings = networkSettings
-        if (!settings.useEch || !EchHttpClient.isLoaded || request.url.host !in hanimeHosts || request.method !in setOf("GET", "POST", "DELETE")) return null
+        if (!settings.useEch || !EchHttpClient.isLoaded || request.url.scheme != "https" || request.method !in setOf("GET", "POST", "DELETE")) return null
         return runCatching {
             val headers = request.headers.toMultimap().mapValues { it.value.joinToString(", ") }.toMutableMap()
             cookieJar.loadForRequest(request.url).takeIf { it.isNotEmpty() }?.let { cookies ->

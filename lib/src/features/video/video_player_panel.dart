@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:m3e_core/m3e_core.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../l10n/app_localizations.dart';
@@ -16,6 +18,7 @@ import '../../core/video_player_shutdown.dart';
 import '../../data/local/keyframe_repository.dart';
 import '../../data/local/watch_repository.dart';
 import '../../data/remote/han1me_api.dart';
+import '../../data/remote/han1me_http_client.dart';
 import '../../domain/models/video.dart';
 import '../settings/settings_controller.dart';
 import 'video_player_controls.dart';
@@ -192,7 +195,19 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
     final settings = await ref.read(settingsProvider.future);
     if (!mounted || version != _loadVersion) return;
     final getchuTrailer = widget.video.id.startsWith('getchu-');
-    final controller = source.url.startsWith('/')
+    final isMp4 = RegExp(r'\.mp4(?:$|\?)', caseSensitive: false).hasMatch(source.url);
+    String? localVideoPath;
+    if (isMp4 && Platform.isAndroid) {
+      final directory = await getTemporaryDirectory();
+      localVideoPath = path.join(directory.path, 'han1me-video-cache', '${source.url.hashCode}.mp4');
+      final file = File(localVideoPath);
+      if (!await file.exists() || await file.length() == 0) {
+        await Han1meHttpClient().download(source.url, localVideoPath);
+      }
+    }
+    final controller = localVideoPath != null
+        ? VideoPlayerController.file(File(localVideoPath))
+        : source.url.startsWith('/')
         ? VideoPlayerController.file(File(source.url))
         : VideoPlayerController.networkUrl(
             Uri.parse(source.url),
