@@ -219,8 +219,10 @@ class DownloadController extends AsyncNotifier<DownloadState> {
       final directory = Directory(path.join(_root.path, task.videoCode));
       await directory.create(recursive: true);
       final settings = await ref.read(settingsProvider.future);
+      final sourceOrigin = Uri.tryParse(source.url)?.origin;
+      final referer = sourceOrigin == null || sourceOrigin == 'null' ? '${settings.resolvedBaseUrl}/watch?v=${detail.id}' : '$sourceOrigin/';
       final headers = <String, String>{
-        'Referer': '${settings.resolvedBaseUrl}/watch?v=${detail.id}',
+        'Referer': referer,
         'User-Agent': Han1meHttpClient.userAgent,
       };
       final meta = File(path.join(directory.path, 'detail.json'));
