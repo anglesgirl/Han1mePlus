@@ -10,6 +10,8 @@ import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 
 @Keep
 class CloudflareActivity : Activity() {
@@ -40,7 +42,13 @@ class CloudflareActivity : Activity() {
             javaScriptCanOpenWindowsAutomatically = true
             userAgentString = userAgent
         }
-        webView.webViewClient = object : WebViewClient() {}
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (request.url.scheme != "https") return super.shouldInterceptRequest(view, request)
+                return MainActivity.interceptActiveWebViewRequest(request)
+                    ?: WebResourceResponse("text/plain", "UTF-8", 503, "ECH unavailable", emptyMap(), "ECH unavailable".byteInputStream())
+            }
+        }
         handler.post(object : Runnable {
             override fun run() {
                 if (isFinishing || completed) return

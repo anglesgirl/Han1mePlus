@@ -11,6 +11,8 @@ import android.os.Build
 import android.provider.Settings
 import android.view.KeyEvent
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -38,6 +40,11 @@ import java.util.concurrent.TimeUnit
 @Keep
 class MainActivity : FlutterActivity() {
     companion object {
+        @Volatile private var activeInstance: MainActivity? = null
+
+        internal fun interceptActiveWebViewRequest(request: WebResourceRequest): WebResourceResponse? =
+            activeInstance?.interceptWebViewRequest(request)
+
         const val userAgentStatic = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Mobile Safari/537.36"
         const val preferencesName = "han1meplus_http"
         const val cookieKey = "cookies"
@@ -115,6 +122,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        activeInstance = this
         networkSettings = loadNetworkSettings()
         client = createClient()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
@@ -398,7 +406,36 @@ class MainActivity : FlutterActivity() {
         }.start()
     }
 
-    private fun nativeEchRequest(request: Request): EchResponse? {
+    internal fun interceptWebViewRequest(webRequest: WebResourceRequest): WebResourceResponse? {
+        if (webRequest.method != "GET" || webRequest.url.scheme != "https") return null
+        val requestBuilder = Request.Builder().url(webRequest.url.toString())
+        webRequest.requestHeaders.forEach { (name, value) ->
+            if (!name.equals("Host", true) && !name.equals("Connection", true) && !name.equals("Content-Length", true)) {
+                requestBuilder.header(name, value)
+            }
+        }
+        requestBuilder.header("User-Agent", webRequest.requestHeaders["User-Agent"] ?: userAgent)
+        val request = requestBuilder.build()
+        val response = nativeEchRequest(request, allowChallenge = true) ?: run {
+            EchHttpClient.addLog("WebView ECH unavailable: ${webRequest.url.host}")
+            return WebResourceResponse("text/plain", "UTF-8", 502, "ECH unavailable", emptyMap(), "ECH unavailable".byteInputStream())
+        }
+        val contentType = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }
+            ?.value?.firstOrNull().orEmpty()
+        val mime = contentType.substringBefore(';').ifBlank { "text/html" }
+        val encoding = Regex("charset=([^;]+)", RegexOption.IGNORE_CASE).find(contentType)?.groupValues?.get(1)?.trim()
+        val headers = response.headers
+            .filterKeys { key -> !key.equals("Content-Length", true) && !key.equals("Transfer-Encoding", true) }
+            .mapValues { it.value.joinToString(", ") }
+            .toMutableMap()
+        response.headers.entries
+            .filter { it.key.equals("Set-Cookie", true) }
+            .flatMap { it.value }
+            .forEach { CookieManager.getInstance().setCookie(webRequest.url.toString(), it.substringBefore(';')) }
+        return WebResourceResponse(mime, encoding, response.statusCode, "ECH", headers, response.body.inputStream())
+    }
+
+    private fun nativeEchRequest(request: Request, allowChallenge: Boolean = false): EchResponse? {
         val settings = networkSettings
         if (!settings.useEch || !EchHttpClient.isLoaded || request.url.scheme != "https" || request.method !in setOf("GET", "POST", "DELETE")) return null
         return runCatching {
@@ -414,7 +451,7 @@ class MainActivity : FlutterActivity() {
                 .mapNotNull { Cookie.parse(request.url, it) }
                 .takeIf { it.isNotEmpty() }
                 ?.let { cookieJar.saveFromResponse(request.url, it) }
-            response.takeUnless { it.statusCode == 403 && it.headers.any { header -> header.key.equals("cf-mitigated", true) } }
+            response.takeUnless { !allowChallenge && it.statusCode == 403 && it.headers.any { header -> header.key.equals("cf-mitigated", true) } }
         }.onFailure { EchHttpClient.addLog("${request.url.host}: ${it.message ?: "native request failed"}") }.getOrNull()
     }
 
