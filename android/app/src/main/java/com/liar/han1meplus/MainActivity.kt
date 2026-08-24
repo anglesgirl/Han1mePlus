@@ -44,6 +44,13 @@ class MainActivity : FlutterActivity() {
         const val useEchKey = "use_ech"
         const val gatewayDohUrl = "https://tgxjjdszvu.cloudflare-gateway.com/dns-query"
 
+        // HLS only needs clean DNS; standard TLS preserves the CDN's HTTP/2 path.
+        fun createHlsClient(): OkHttpClient = OkHttpClient.Builder()
+            .dns(ConfigurableDns { NetworkSettings() })
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+
         fun saveCookies(context: Context, cookies: String, url: String) {
             val preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
             val host = requireNotNull(android.net.Uri.parse(url).host)

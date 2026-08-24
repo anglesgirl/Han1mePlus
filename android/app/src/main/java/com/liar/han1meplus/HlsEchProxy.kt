@@ -1,6 +1,8 @@
 package com.liar.han1meplus
 
 import android.net.Uri
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -15,6 +17,7 @@ import java.util.concurrent.Executors
 internal object HlsEchProxy {
     private const val maxRequestLine = 8192
     private val executor = Executors.newCachedThreadPool()
+    private val upstream: OkHttpClient by lazy { MainActivity.createHlsClient() }
     @Volatile private var server: ServerSocket? = null
     @Volatile private var port = 0
     fun start(): Int {
@@ -68,18 +71,25 @@ internal object HlsEchProxy {
             val source = query.getQueryParameter("url") ?: return response(output, 400, "text/plain", "missing url".toByteArray())
             val referer = query.getQueryParameter("referer").orEmpty()
             val cookie = query.getQueryParameter("cookie")
-            val response = runCatching {
-                val requestHeaders = mutableMapOf("User-Agent" to MainActivity.userAgentStatic, "Referer" to referer)
-                if (!cookie.isNullOrEmpty()) requestHeaders["Cookie"] = cookie
-                EchHttpClient.execute("GET", source, requestHeaders, null, MainActivity.gatewayDohUrl, "")
-            }.getOrElse { return response(output, 502, "text/plain", (it.message ?: "ECH request failed").toByteArray()) }
-            if (response.statusCode !in 200..299) return response(output, response.statusCode, "text/plain", response.body)
-            val contentType = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value?.firstOrNull() ?: "application/octet-stream"
-            if (contentType.contains("mpegurl", true) || source.contains(".m3u8", true)) {
-                val playlist = response.body.toString(StandardCharsets.UTF_8)
-                val rewritten = rewritePlaylist(playlist, source, referer, cookie)
-                response(output, 200, "application/vnd.apple.mpegurl", rewritten.toByteArray(StandardCharsets.UTF_8))
-            } else response(output, 200, contentType, response.body)
+            val request = Request.Builder().url(source)
+                .header("User-Agent", MainActivity.userAgentStatic)
+                .apply {
+                    if (referer.isNotEmpty()) header("Referer", referer)
+                    if (!cookie.isNullOrEmpty()) header("Cookie", cookie)
+                }
+                .build()
+            runCatching {
+                upstream.newCall(request).execute().use { upstreamResponse ->
+                    val body = upstreamResponse.body?.bytes().orEmpty()
+                    if (!upstreamResponse.isSuccessful) return response(output, upstreamResponse.code, "text/plain", body)
+                    val contentType = upstreamResponse.header("Content-Type") ?: "application/octet-stream"
+                    if (contentType.contains("mpegurl", true) || source.contains(".m3u8", true)) {
+                        val playlist = body.toString(StandardCharsets.UTF_8)
+                        val rewritten = rewritePlaylist(playlist, source, referer, cookie)
+                        response(output, 200, "application/vnd.apple.mpegurl", rewritten.toByteArray(StandardCharsets.UTF_8))
+                    } else response(output, 200, contentType, body)
+                }
+            }.getOrElse { response(output, 502, "text/plain", (it.message ?: "upstream request failed").toByteArray()) }
         }
     }
 
