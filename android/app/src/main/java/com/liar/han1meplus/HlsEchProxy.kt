@@ -80,7 +80,7 @@ internal object HlsEchProxy {
                 .build()
             runCatching {
                 upstream.newCall(request).execute().use { upstreamResponse ->
-                    val body = upstreamResponse.body?.bytes().orEmpty()
+                    val body = upstreamResponse.body?.bytes() ?: ByteArray(0)
                     if (!upstreamResponse.isSuccessful) return response(output, upstreamResponse.code, "text/plain", body)
                     val contentType = upstreamResponse.header("Content-Type") ?: "application/octet-stream"
                     if (contentType.contains("mpegurl", true) || source.contains(".m3u8", true)) {
