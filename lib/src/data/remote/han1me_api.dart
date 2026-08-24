@@ -297,7 +297,7 @@ class Han1meApi {
     if (isCloudflareResponse(page.statusCode, page.headers, page.body)) throw CloudflareChallengeException(loginUrl);
     if (page.statusCode >= 400) throw StateError('Unable to load login form');
     final document = html_parser.parse(page.body);
-    final token = document.querySelector('form[action$="/login"] input[name="_token"]')?.attributes['value'] ?? document.querySelector('input[name="_token"]')?.attributes['value'];
+    final token = document.querySelector('form[action="https://hanime1.com/login"] input[name="_token"]')?.attributes['value'] ?? document.querySelector('input[name="_token"]')?.attributes['value'];
     if (token == null || token.isEmpty) throw StateError('Login form token is unavailable');
     final response = await _http.post(loginUrl, {'_token': token, 'email': email, 'password': password}, headers: {'X-CSRF-TOKEN': token, 'Referer': loginUrl});
     if (isCloudflareResponse(response.statusCode, response.headers, response.body)) throw CloudflareChallengeException(loginUrl);
@@ -310,7 +310,7 @@ class Han1meApi {
     if (isCloudflareResponse(page.statusCode, page.headers, page.body)) throw CloudflareChallengeException(registerUrl);
     if (page.statusCode >= 400) throw StateError('Unable to load registration form');
     final document = html_parser.parse(page.body);
-    final token = document.querySelector('form[action$="/register"] input[name="_token"]')?.attributes['value'] ?? document.querySelector('input[name="_token"]')?.attributes['value'];
+    final token = document.querySelector('form[action="https://hanime1.com/register"] input[name="_token"]')?.attributes['value'] ?? document.querySelector('input[name="_token"]')?.attributes['value'];
     if (token == null || token.isEmpty) throw StateError('Registration form token is unavailable');
     final response = await _http.post(registerUrl, {'_token': token, 'email': email, 'name': name, 'password': password}, headers: {'X-CSRF-TOKEN': token, 'Referer': registerUrl});
     if (isCloudflareResponse(response.statusCode, response.headers, response.body)) throw CloudflareChallengeException(registerUrl);
