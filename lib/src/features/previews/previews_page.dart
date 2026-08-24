@@ -10,6 +10,10 @@ import '../../data/remote/han1me_http_client.dart';
 import '../../domain/models/video.dart';
 import '../settings/settings_controller.dart';
 
+final previewsProvider = FutureProvider.autoDispose.family<PreviewFeed, String>((ref, month) async {
+  final settings = await ref.watch(settingsProvider.future);
+  return ref.watch(han1meRepositoryProvider).previews(settings.resolvedBaseUrl, month);
+});
 class _ProxyImage extends StatefulWidget {
   const _ProxyImage({required this.url, required this.headers, this.fit, this.memCacheWidth});
 
