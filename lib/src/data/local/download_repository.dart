@@ -233,15 +233,10 @@ class DownloadController extends AsyncNotifier<DownloadState> {
       if (localCoverPath != null) await _replace(task.id, (value) => value.copyWith(localCoverPath: localCoverPath));
       final quality = source.quality.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_');
       final hls = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(source.url) || source.type?.toLowerCase().contains('mpegurl') == true;
-      final playlist = File(path.join(directory.path, 'video_$quality.m3u8'));
       final video = File(path.join(directory.path, 'video_$quality.mp4'));
       if (hls) {
-        await _downloadHls(source.url, playlist, task.id, headers);
-        final proxyUrl = Platform.isAndroid
-            ? await Han1meHttpClient().hlsProxyUrl(source.url, referer: referer, cookie: headers['Cookie'])
-            : source.url;
         final result = await Hls2Mp4Converter.convert(
-          inputUrl: proxyUrl,
+          inputUrl: source.url,
           outputPath: video.path,
           timeoutMs: 60000,
           maxRetries: 3,
@@ -267,55 +262,6 @@ class DownloadController extends AsyncNotifier<DownloadState> {
     await _replace(taskId, (value) => value.copyWith(progress: 1, downloadedBytes: length, totalBytes: length));
   }
 
-  Future<void> _downloadHls(String url, File destination, String taskId, Map<String, String> headers) async {
-    final fetched = <String>{};
-
-    Future<void> savePlaylist(String playlistUrl, File output) async {
-      if (!fetched.add(playlistUrl)) return;
-      final response = await Han1meHttpClient().get(playlistUrl, headers: headers);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException('HLS playlist request failed: HTTP ${response.statusCode}', uri: Uri.parse(playlistUrl));
-      }
-      final lines = response.body.split(RegExp(r'\r?\n'));
-      final rewritten = <String>[];
-      var index = 0;
-      for (final line in lines) {
-        final value = line.trim();
-        if (value.isEmpty) {
-          rewritten.add(line);
-          continue;
-        }
-        if (value.startsWith('#')) {
-          final match = RegExp(r'URI="([^"]+)"').firstMatch(line);
-          if (match != null) {
-            final resolved = Uri.parse(playlistUrl).resolve(match.group(1)!).toString();
-            final key = File(path.join(output.parent.path, 'key_${index++}.bin'));
-            await Han1meHttpClient().download(resolved, key.path, headers: headers);
-            rewritten.add(line.replaceFirst(match.group(1)!, key.uri.pathSegments.last));
-          } else {
-            rewritten.add(line);
-          }
-          continue;
-        }
-        final resolved = Uri.parse(playlistUrl).resolve(value).toString();
-        final isPlaylist = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(resolved);
-        final child = isPlaylist
-            ? File(path.join(output.parent.path, 'playlist_${index++}', 'index.m3u8'))
-            : File(path.join(output.parent.path, 'segment_${index++}.bin'));
-        if (child.path.endsWith('.m3u8')) {
-          await savePlaylist(resolved, child);
-        } else {
-          await Han1meHttpClient().download(resolved, child.path, headers: headers);
-        }
-        rewritten.add(path.relative(child.path, from: output.parent.path).replaceAll('\\', '/'));
-        await _replace(taskId, (current) => current.copyWith(progress: 0, downloadedBytes: 0, totalBytes: -1));
-      }
-      await output.parent.create(recursive: true);
-      await output.writeAsString(rewritten.join('\n'), flush: true);
-    }
-
-    await savePlaylist(url, destination);
-  }
 
   Future<String?> _downloadCover(String? url, Directory directory, Map<String, String> headers) async {
     if (url == null || url.isEmpty) return null;

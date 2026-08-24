@@ -199,11 +199,9 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
         : sourceOrigin == null || sourceOrigin == 'null'
         ? '${settings.resolvedBaseUrl}/watch?v=${widget.video.id}'
         : '$sourceOrigin/';
-    final isM3u8 = RegExp(r'\.m3u8(?:$|\?)', caseSensitive: false).hasMatch(source.url) || source.type?.toLowerCase().contains('mpegurl') == true;
-    var playbackUrl = source.url;
-    if (isM3u8 && Platform.isAndroid) {
-      playbackUrl = await Han1meHttpClient().hlsProxyUrl(source.url, referer: referer, cookie: getchuTrailer ? 'getchu_adalt_flag=getchu.com; gc=gc' : null);
-    }
+    // ExoPlayer resolves child playlists, segments, and keys against the
+    // original playlist URL. This HLS source does not require ECH.
+    final playbackUrl = source.url;
     final controller = source.url.startsWith('/')
         ? VideoPlayerController.file(File(source.url))
         : VideoPlayerController.networkUrl(
