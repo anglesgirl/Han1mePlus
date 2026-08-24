@@ -93,6 +93,7 @@ class MainActivity : FlutterActivity() {
     private var volumeUpPresses = 0
     private var lastVolumeUpPress = 0L
     private var authenticationResult: MethodChannel.Result? = null
+    private var internalLoginResult: MethodChannel.Result? = null
     private var directoryResult: MethodChannel.Result? = null
     private var documentResult: MethodChannel.Result? = null
     private var documentBytes: ByteArray? = null
@@ -158,6 +159,23 @@ class MainActivity : FlutterActivity() {
                     val cookieManager = CookieManager.getInstance()
                     cookieManager.flush()
                     result.success(cookieManager.getCookie(url).orEmpty())
+                }
+                "openInternalLogin" -> {
+                    if (internalLoginResult != null) {
+                        result.error("login_in_progress", "An internal login is already open", null)
+                    } else {
+                        internalLoginResult = result
+                        CloudflareActivity.onFinished = { cookies ->
+                            saveCookies(this, cookies, call.argument<String>("url").orEmpty())
+                            internalLoginResult?.success(cookies.orEmpty())
+                            internalLoginResult = null
+                        }
+                        startActivity(
+                            Intent(this, CloudflareActivity::class.java)
+                                .putExtra(CloudflareActivity.requestUrlKey, call.argument<String>("url").orEmpty())
+                                .putExtra(CloudflareActivity.autoCompleteKey, true),
+                        )
+                    }
                 }
                 "clearWebViewCookies" -> {
                     CookieManager.getInstance().removeAllCookies { result.success(null) }
@@ -564,7 +582,7 @@ private class CloudflareInterceptor(private val context: Context) : Interceptor 
         if (response.code != 403 || response.header("cf-mitigated")?.equals("challenge", true) != true) return response
         response.close()
         val latch = CountDownLatch(1)
-        CloudflareActivity.onFinished = { latch.countDown() }
+        CloudflareActivity.onFinished = { _ -> latch.countDown() }
         try {
             context.startActivity(
                 android.content.Intent(context, CloudflareActivity::class.java)
@@ -573,7 +591,7 @@ private class CloudflareInterceptor(private val context: Context) : Interceptor 
             )
             latch.await()
         } catch (_: Exception) {
-            CloudflareActivity.onFinished?.invoke()
+            CloudflareActivity.onFinished?.invoke("")
         }
         return chain.proceed(request)
     }

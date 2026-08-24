@@ -90,6 +90,15 @@ class AccountController extends AsyncNotifier<Account?> {
     ref.invalidate(accountsProvider);
   }
 
+  Future<void> loginInInternalWebView() async {
+    final settings = await ref.read(settingsProvider.future);
+    final http = ref.read(han1meHttpClientProvider);
+    await http.clearCookies(url: settings.resolvedBaseUrl);
+    final cookies = await http.openInternalLogin('${settings.resolvedBaseUrl}/login');
+    if (cookies.trim().isEmpty) throw StateError('No login session was received');
+    await saveCookie(cookies);
+  }
+
   Future<void> register(String email, String name, String password) async {
     final settings = await ref.read(settingsProvider.future);
     await ref.read(han1meRepositoryProvider).register(settings.resolvedBaseUrl, email.trim(), name.trim(), password);
