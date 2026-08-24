@@ -38,6 +38,8 @@ std::mutex ech_cache_mutex;
 std::unordered_map<std::string, CachedEchConfig> ech_cache;
 std::mutex gateway_cache_mutex;
 std::unordered_map<std::string, CachedEchConfig> gateway_cache;
+std::mutex target_ip_cache_mutex;
+std::unordered_map<std::string, CachedEchConfig> target_ip_cache;
 std::mutex curl_share_mutex;
 std::once_flag curl_share_once;
 CURLSH* curl_share = nullptr;
@@ -199,6 +201,10 @@ std::string doh_query_url(const std::string& doh_url, const std::string& host) {
   return doh_url + (doh_url.find('?') == std::string::npos ? "?" : "&") + "name=" + host + "&type=65";
 }
 
+std::string doh_a_query_url(const std::string& doh_url, const std::string& host) {
+  return doh_url + (doh_url.find('?') == std::string::npos ? "?" : "&") + "name=" + host + "&type=1";
+}
+
 void add_ech_log(NativeResponse* response, const std::string& message) {
   response->ech_logs.push_back(message);
 }
@@ -335,6 +341,59 @@ std::string fetch_ech_config(const std::string& doh_url, const std::string& doh_
   return config;
 }
 
+std::string fetch_target_ip(const std::string& doh_url, const std::string& doh_resolve, const std::string& host, NativeResponse* diagnostics) {
+  {
+    std::lock_guard lock(target_ip_cache_mutex);
+    const auto entry = target_ip_cache.find(host);
+    if (entry != target_ip_cache.end() && std::chrono::steady_clock::now() < entry->second.expires_at) {
+      add_ech_log(diagnostics, "Target IP cache hit for " + host);
+      return entry->second.value;
+    }
+  }
+  auto* handle = curl_easy_init();
+  if (handle == nullptr) return {};
+  if (auto* share = shared_curl(); share != nullptr) curl_easy_setopt(handle, CURLOPT_SHARE, share);
+  NativeResponse response;
+  auto* headers = curl_slist_append(nullptr, "Accept: application/dns-json");
+  const auto doh_host = request_host(doh_url);
+  bool gateway_cache_hit = false;
+  const auto bootstrap_ip = doh_resolve.empty() ? bootstrap_gateway_ip(doh_host, &gateway_cache_hit) : std::string{};
+  const auto resolver_entry = !doh_resolve.empty() ? doh_resolve : (bootstrap_ip.empty() ? std::string{} : doh_host + ":443:" + bootstrap_ip);
+  auto* resolver_entries = resolver_entry.empty() ? nullptr : curl_slist_append(nullptr, resolver_entry.c_str());
+  const auto query_url = doh_a_query_url(doh_url, host);
+  curl_easy_setopt(handle, CURLOPT_URL, query_url.c_str());
+  curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, write_callback);
+  curl_easy_setopt(handle, CURLOPT_WRITEDATA, &response);
+  curl_easy_setopt(handle, CURLOPT_DNS_CACHE_TIMEOUT, 300L);
+  curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT, 10L);
+  curl_easy_setopt(handle, CURLOPT_TIMEOUT, 15L);
+  curl_easy_setopt(handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3);
+  curl_easy_setopt(handle, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+  curl_easy_setopt(handle, CURLOPT_CAPATH, "/system/etc/security/cacerts");
+  if (resolver_entries != nullptr) curl_easy_setopt(handle, CURLOPT_RESOLVE, resolver_entries);
+  const auto result = curl_easy_perform(handle);
+  curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &response.status_code);
+  curl_slist_free_all(headers);
+  curl_slist_free_all(resolver_entries);
+  curl_easy_cleanup(handle);
+  if (result != CURLE_OK || response.status_code != 200) return {};
+  const auto type_marker = response.body.find("\"type\":1");
+  const auto data_marker = type_marker == std::string::npos ? std::string::npos : response.body.find("\"data\":\"", type_marker);
+  if (data_marker == std::string::npos) return {};
+  const auto start = data_marker + 8;
+  const auto end = response.body.find('"', start);
+  if (end == std::string::npos) return {};
+  const auto address = response.body.substr(start, end - start);
+  if (address.find('.') == std::string::npos) return {};
+  {
+    std::lock_guard lock(target_ip_cache_mutex);
+    target_ip_cache[host] = CachedEchConfig{address, std::chrono::steady_clock::now() + std::chrono::minutes(5)};
+  }
+  add_ech_log(diagnostics, "Target IP resolved and cached for " + host);
+  return address;
+}
+
 std::string request_host(const std::string& url) {
   CURLU* parsed = curl_url();
   if (parsed == nullptr) return {};
@@ -460,6 +519,13 @@ Java_com_liar_han1meplus_EchHttpClient_request(
   } else {
     add_ech_log(&response, "Gateway bootstrap failed, using system DNS");
   }
+  const auto target_ip = fetch_target_ip(resolver_url, resolver_address, host, &response);
+  curl_slist* target_entries = nullptr;
+  if (!target_ip.empty()) {
+    target_entries = curl_slist_append(nullptr, (host + ":443:" + target_ip).c_str());
+    curl_easy_setopt(handle, CURLOPT_RESOLVE, target_entries);
+    curl_easy_setopt(handle, CURLOPT_DOH_URL, nullptr);
+  }
 
   if (request_method == "POST") {
     curl_easy_setopt(handle, CURLOPT_POST, 1L);
@@ -478,6 +544,7 @@ Java_com_liar_han1meplus_EchHttpClient_request(
     const auto* error = curl_easy_strerror(result);
     curl_slist_free_all(request_headers);
     curl_slist_free_all(resolver_entries);
+    curl_slist_free_all(target_entries);
     curl_easy_cleanup(handle);
     throw_exception(env, error);
     return nullptr;
@@ -492,6 +559,7 @@ Java_com_liar_han1meplus_EchHttpClient_request(
   const auto json = json_response(response);
   curl_slist_free_all(request_headers);
   curl_slist_free_all(resolver_entries);
+  curl_slist_free_all(target_entries);
   curl_easy_cleanup(handle);
   return env->NewStringUTF(json.c_str());
 }
