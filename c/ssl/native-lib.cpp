@@ -41,6 +41,9 @@ std::unordered_map<std::string, CachedEchConfig> gateway_cache;
 std::mutex curl_share_mutex;
 std::once_flag curl_share_once;
 CURLSH* curl_share = nullptr;
+std::mutex curl_multi_mutex;
+std::once_flag curl_multi_once;
+CURLM* curl_multi = nullptr;
 
 void curl_share_lock(CURL*, curl_lock_data, curl_lock_access, void*) {
   curl_share_mutex.lock();
@@ -60,6 +63,42 @@ CURLSH* shared_curl() {
     curl_share_setopt(curl_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
   });
   return curl_share;
+}
+
+CURLM* shared_multi() {
+  std::call_once(curl_multi_once, [] {
+    curl_multi = curl_multi_init();
+    if (curl_multi != nullptr) {
+      curl_multi_setopt(curl_multi, CURLMOPT_MAX_HOST_CONNECTIONS, 6L);
+      curl_multi_setopt(curl_multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 16L);
+    }
+  });
+  return curl_multi;
+}
+
+CURLcode perform_with_connection_pool(CURL* handle) {
+  std::lock_guard lock(curl_multi_mutex);
+  auto* multi = shared_multi();
+  if (multi == nullptr || curl_multi_add_handle(multi, handle) != CURLM_OK) return CURLE_FAILED_INIT;
+
+  int running = 0;
+  CURLMcode multi_result = curl_multi_perform(multi, &running);
+  while (multi_result == CURLM_OK && running > 0) {
+    int poll_result = 0;
+    multi_result = curl_multi_poll(multi, nullptr, 0, 1000, &poll_result);
+    if (multi_result == CURLM_OK) multi_result = curl_multi_perform(multi, &running);
+  }
+
+  CURLcode result = CURLE_FAILED_INIT;
+  int messages = 0;
+  while (auto* message = curl_multi_info_read(multi, &messages)) {
+    if (message->easy_handle == handle && message->msg == CURLMSG_DONE) {
+      result = message->data.result;
+      break;
+    }
+  }
+  curl_multi_remove_handle(multi, handle);
+  return multi_result == CURLM_OK ? result : CURLE_FAILED_INIT;
 }
 
 size_t write_callback(char* data, size_t size, size_t count, void* user_data) {
@@ -434,7 +473,7 @@ Java_com_liar_han1meplus_EchHttpClient_request(
     curl_easy_setopt(handle, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(request_body.size()));
   }
 
-  const auto result = curl_easy_perform(handle);
+  const auto result = perform_with_connection_pool(handle);
   if (result != CURLE_OK) {
     const auto* error = curl_easy_strerror(result);
     curl_slist_free_all(request_headers);
