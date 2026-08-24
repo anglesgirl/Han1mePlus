@@ -31,7 +31,7 @@ class NetworkSettingsPage extends ConsumerWidget {
        SettingsCardItem(title: l10n.customMirrorSite, subtitle: settings.mirrorActive ? settings.customMirrorSite : l10n.customMirrorSiteHint, leading: const Icon(Icons.link_outlined), trailing: const Icon(Icons.chevron_right), onTap: () => _showMirrorSettings(context, ref, settings, controller)),
 
         if (Platform.isAndroid) SettingsCardItem(title: l10n.useEch, subtitle: l10n.useEchDescription, leading: const Icon(Icons.visibility_off_outlined), trailing: Switch(value: settings.useEch, onChanged: (value) => controller.saveChanges((current) => current.copyWith(useEch: value)))),
-        if (Platform.isAndroid) SettingsCardItem(title: l10n.echLogs, subtitle: l10n.echLogsDescription, leading: const Icon(Icons.receipt_long_outlined), trailing: const Icon(Icons.chevron_right), onTap: () => _showEchLogs(context)),
+
       ]),
        SettingsCardList(title: l10n.downloadSettings, children: [
        SettingsCardItem(title: l10n.downloadPath, subtitle: settings.downloadPath, leading: const Icon(Icons.folder_outlined), trailing: const Icon(Icons.chevron_right), onTap: () => _editDownloadPath(context, settings, controller)),
@@ -76,12 +76,7 @@ class NetworkSettingsPage extends ConsumerWidget {
   }
 
 
-  Future<void> _showEchLogs(BuildContext context) async {
-    final logs = await Han1meHttpClient().echLogs();
-    if (!context.mounted) return;
-    final l10n = AppLocalizations.of(context)!;
-    await showDialog<void>(context: context, builder: (context) => AlertDialog(title: Text(l10n.echLogs), content: SizedBox(width: double.maxFinite, child: logs.isEmpty ? Text(l10n.noEchLogs) : ListView.separated(shrinkWrap: true, itemCount: logs.length, separatorBuilder: (context, index) => const Divider(height: 1), itemBuilder: (context, index) => Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(logs[index])))), actions: [TextButton(onPressed: () async { await Han1meHttpClient().clearEchLogs(); if (context.mounted) Navigator.pop(context); }, child: Text(l10n.clearEchLogs)), FilledButton(onPressed: () => Navigator.pop(context), child: Text(l10n.close))]));
-  }
+
 
 }
 

@@ -17,12 +17,25 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --release --split-per-abi
+      - name: Configure fixed release signing
         env:
-          HAN1ME_CRASH_R2_ENDPOINT: ${{ secrets.HAN1ME_CRASH_R2_ENDPOINT }}
-          HAN1ME_CRASH_R2_BUCKET: ${{ secrets.HAN1ME_CRASH_R2_BUCKET }}
-          HAN1ME_CRASH_R2_ACCESS_KEY: ${{ secrets.HAN1ME_CRASH_R2_ACCESS_KEY }}
-          HAN1ME_CRASH_R2_SECRET_KEY: ${{ secrets.HAN1ME_CRASH_R2_SECRET_KEY }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.HAN1ME_RELEASE_KEYSTORE_B64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.HAN1ME_RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.HAN1ME_RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.HAN1ME_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$RELEASE_KEYSTORE_B64"
+          test -n "$RELEASE_STORE_PASSWORD"
+          test -n "$RELEASE_KEY_ALIAS"
+          test -n "$RELEASE_KEY_PASSWORD"
+          echo "$RELEASE_KEYSTORE_B64" | base64 --decode > android/release-key.jks
+          cat > android/key.properties <<EOF
+          storeFile=release-key.jks
+          storePassword=$RELEASE_STORE_PASSWORD
+          keyAlias=$RELEASE_KEY_ALIAS
+          keyPassword=$RELEASE_KEY_PASSWORD
+          EOF
+      - run: flutter build apk --release --split-per-abi
       - uses: actions/upload-artifact@v4
         with:
           name: han1meplus-ech-fix-apk

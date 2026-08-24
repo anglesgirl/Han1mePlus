@@ -10,7 +10,7 @@ import 'package:path/path.dart' as path;
 import 'ech_network_settings.dart';
 
 class EchNativeResponse {
-  const EchNativeResponse({required this.statusCode, required this.body, required this.url, required this.headers, required this.status, required this.logs});
+  const EchNativeResponse({required this.statusCode, required this.body, required this.url, required this.headers, required this.status});
 
   factory EchNativeResponse.fromJson(Map<String, dynamic> json) {
     final headers = <String, List<String>>{};
@@ -26,7 +26,7 @@ class EchNativeResponse {
       url: json['url'] as String? ?? '',
       headers: headers,
       status: json['echStatus'] as String? ?? 'unavailable',
-      logs: List<String>.from(json['echLogs'] as List<dynamic>? ?? const []),
+
     );
   }
 
@@ -35,12 +35,9 @@ class EchNativeResponse {
   final String url;
   final Map<String, List<String>> headers;
   final String status;
-  final List<String> logs;
 }
 
 class EchNativeClient {
-  static final _logs = <String>[];
-
   static bool get supportsCurrentPlatform => Platform.isIOS || Platform.isMacOS || Platform.isWindows;
 
   static Future<bool> isAvailable() async {
@@ -54,19 +51,14 @@ class EchNativeClient {
     });
   }
 
-  static List<String> logs() => List.unmodifiable(_logs.reversed);
-
-  static void clearLogs() => _logs.clear();
 
   static Future<EchNativeResponse?> request({required String method, required String url, required Map<String, String> headers, required Uint8List body, required EchNetworkSettings settings}) async {
     if (!settings.enabled || !supportsCurrentPlatform) return null;
     try {
       final response = await Isolate.run(() => _execute(method, url, headers, body, settings));
-      _appendLogs(response.logs);
-      if (response.statusCode == 0) throw HttpException(response.logs.lastOrNull ?? 'ECH request failed', uri: Uri.tryParse(url));
+      if (response.statusCode == 0) throw HttpException('ECH request failed', uri: Uri.tryParse(url));
       return response;
     } catch (error) {
-      _appendLogs(['Native ECH unavailable: $error']);
       return null;
     }
   }
@@ -101,11 +93,6 @@ class EchNativeClient {
     }
   }
 
-  static void _appendLogs(List<String> logs) {
-    final timestamp = DateTime.now().toIso8601String().substring(11, 19);
-    _logs.addAll(logs.map((log) => '$timestamp  $log'));
-    if (_logs.length > 100) _logs.removeRange(0, _logs.length - 100);
-  }
 }
 
 typedef _RequestNative = Pointer<Char> Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Pointer<Utf8>>, Size, Pointer<Uint8>, Size, Pointer<Utf8>, Pointer<Utf8>);

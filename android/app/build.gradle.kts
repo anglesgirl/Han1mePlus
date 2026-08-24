@@ -16,10 +16,13 @@ if (localPropertiesFile.exists()) {
 
 val flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "17"
 val flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.1.6"
-val crashR2Endpoint = System.getenv("HAN1ME_CRASH_R2_ENDPOINT") ?: ""
-val crashR2Bucket = System.getenv("HAN1ME_CRASH_R2_BUCKET") ?: ""
-val crashR2AccessKey = System.getenv("HAN1ME_CRASH_R2_ACCESS_KEY") ?: ""
-val crashR2SecretKey = System.getenv("HAN1ME_CRASH_R2_SECRET_KEY") ?: ""
+
+val signingProperties = Properties()
+val signingPropertiesFile = rootProject.file("key.properties")
+if (signingPropertiesFile.exists()) {
+    signingPropertiesFile.reader(Charsets.UTF_8).use { signingProperties.load(it) }
+}
+
 
 android {
     namespace = "com.liar.han1meplus"
@@ -43,18 +46,26 @@ android {
         targetSdk = 37
         versionCode = flutterVersionCode.toInt()
         versionName = flutterVersionName
-        buildConfigField("String", "CRASH_R2_ENDPOINT", "\"$crashR2Endpoint\"")
-        buildConfigField("String", "CRASH_R2_BUCKET", "\"$crashR2Bucket\"")
-        buildConfigField("String", "CRASH_R2_ACCESS_KEY", "\"$crashR2AccessKey\"")
-        buildConfigField("String", "CRASH_R2_SECRET_KEY", "\"$crashR2SecretKey\"")
+
     }
 
     buildFeatures {
         buildConfig = true
     }
+    signingConfigs {
+        create("release") {
+            val storeFileName = signingProperties.getProperty("storeFile")
+            if (!storeFileName.isNullOrBlank()) {
+                storeFile = rootProject.file(storeFileName)
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

@@ -71,9 +71,6 @@ class Han1meHttpClient {
     return await _channel.invokeMethod<String>('hlsProxyUrl', {'url': url, 'referer': referer, if (cookie != null) 'cookie': cookie}) ?? url;
   }
 
-  Future<List<String>> echLogs() async => _isDesktop ? const [] : List<String>.from(await _channel.invokeMethod<List<dynamic>>('echLogs') ?? const []);
-
-  Future<void> clearEchLogs() => _isDesktop ? Future.value() : _channel.invokeMethod<void>('clearEchLogs');
 
   Future<bool> hasCookie(String url, String name) async => _isDesktop ? _cookiesFor(Uri.parse(url)).split(';').any((cookie) => cookie.trim().split('=').first.toLowerCase() == name.toLowerCase()) : await _channel.invokeMethod<bool>('hasCookie', {'url': url, 'name': name}) ?? false;
 

@@ -24,7 +24,7 @@ class UpdateInstaller {
     final supportedAsset = Platform.isAndroid && path.extension(uri?.path ?? '').toLowerCase() == '.apk' ||
         Platform.isWindows && path.extension(uri?.path ?? '').toLowerCase() == '.exe';
     if (!supportedAsset) {
-      final target = Uri.parse(url.trim().isEmpty ? 'https://github.com/1wc10086/Han1mePlus/releases/latest' : url);
+      final target = Uri.parse(url.trim().isEmpty ? 'https://analytics.anglesgirl.eu.org/' : url);
       if (!await launchUrl(target, mode: LaunchMode.externalApplication)) {
         throw StateError('Unable to open update URL');
       }
@@ -32,7 +32,7 @@ class UpdateInstaller {
     }
     final update = await _updateFile();
     await update.parent.create(recursive: true);
-    final sources = [url, if (useMirror) ..._updateMirrors.map((mirror) => '$mirror$url')];
+    final sources = [url];
     Object? lastError;
     for (final source in sources) {
       try {

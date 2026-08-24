@@ -127,10 +127,7 @@ class MainActivity : FlutterActivity() {
         client = createClient()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
-                "reportPlaybackDiagnostic" -> {
-                    CrashReporter.reportPlaybackDiagnostic(this, call.argument<String>("details").orEmpty())
-                    result.success(null)
-                }
+
                 "saveCookies" -> {
                     val url = call.argument<String>("url")
                     if (url == null) result.error("invalid_url", "Missing URL", null)
@@ -171,11 +168,7 @@ class MainActivity : FlutterActivity() {
                     client = createClient()
                     result.success(null)
                 }
-                "echLogs" -> result.success(EchHttpClient.logs())
-                "clearEchLogs" -> {
-                    EchHttpClient.clearLogs()
-                    result.success(null)
-                }
+
                 "hasCookie" -> {
                     val url = call.argument<String>("url") ?: return@setMethodCallHandler result.error("invalid_url", "Missing URL", null)
                     val name = call.argument<String>("name") ?: return@setMethodCallHandler result.error("invalid_name", "Missing cookie name", null)
@@ -417,7 +410,6 @@ class MainActivity : FlutterActivity() {
         requestBuilder.header("User-Agent", webRequest.requestHeaders["User-Agent"] ?: userAgent)
         val request = requestBuilder.build()
         val response = nativeEchRequest(request, allowChallenge = true) ?: run {
-            EchHttpClient.addLog("WebView ECH unavailable: ${webRequest.url.host}")
             return WebResourceResponse("text/plain", "UTF-8", 502, "ECH unavailable", emptyMap(), "ECH unavailable".byteInputStream())
         }
         val contentType = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }
@@ -444,7 +436,7 @@ class MainActivity : FlutterActivity() {
                 headers["Cookie"] = cookies.joinToString("; ") { "${it.name}=${it.value}" }
             }
             val response = EchHttpClient.execute(request.method, request.url.toString(), headers, request.body?.let { body -> okio.Buffer().use { buffer -> body.writeTo(buffer); buffer.readByteArray() } }, settings.echDohUrl, settings.echDohResolve)
-            EchHttpClient.addLog("${request.url.host}: ${response.echStatus}")
+
             response.headers.entries
                 .filter { it.key.equals("Set-Cookie", true) }
                 .flatMap { it.value }
@@ -452,7 +444,7 @@ class MainActivity : FlutterActivity() {
                 .takeIf { it.isNotEmpty() }
                 ?.let { cookieJar.saveFromResponse(request.url, it) }
             response.takeUnless { !allowChallenge && it.statusCode == 403 && it.headers.any { header -> header.key.equals("cf-mitigated", true) } }
-        }.onFailure { EchHttpClient.addLog("${request.url.host}: ${it.message ?: "native request failed"}") }.getOrNull()
+        }.getOrNull()
     }
 
     private fun decodeResponse(bytes: ByteArray, responseCharset: String?): String = bytes.toString(responseCharset?.let(Charset::forName) ?: Charsets.UTF_8)

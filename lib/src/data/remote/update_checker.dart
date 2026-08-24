@@ -32,31 +32,30 @@ class UpdateChecker {
     try {
       final installedVersion = currentVersion ?? (await PackageInfo.fromPlatform()).version;
       final response = await _dio.get<Map<String, dynamic>>(
-        'https://api.github.com/repos/1wc10086/Han1mePlus/releases/latest',
+        'https://analytics.anglesgirl.eu.org/api/app-update',
         options: Options(
           responseType: ResponseType.json,
           headers: {
-            'Accept': 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
+            'Accept': 'application/json',
           },
         ),
       );
       final data = response.data;
       if (response.statusCode == null || response.statusCode! >= 300 || data == null) return null;
-      final tag = '${data['tag_name'] ?? ''}'.trim();
+      final tag = '${data['version'] ?? data['tag_name'] ?? ''}'.trim();
       final assets = (data['assets'] as List? ?? const []).whereType<Map>().cast<Map>();
       final asset = await _selectAsset(assets);
       final downloadUrl = Platform.isMacOS
-          ? 'https://github.com/1wc10086/Han1mePlus/releases/latest'
+          ? 'https://analytics.anglesgirl.eu.org/'
           : '${asset?['browser_download_url'] ?? ''}'.trim();
-      final htmlUrl = '${data['html_url'] ?? ''}'.trim();
+      final htmlUrl = '${data['page_url'] ?? data['html_url'] ?? ''}'.trim();
       if (tag.isEmpty || !_newer(tag, installedVersion)) return null;
       return UpdateInfo(
         tagName: tag,
         htmlUrl: htmlUrl,
-        body: '${data['body'] ?? ''}',
-        createdAt: '${data['created_at'] ?? ''}',
-        downloadUrl: downloadUrl.isNotEmpty || Platform.isAndroid ? downloadUrl : htmlUrl,
+        body: '${data['notes'] ?? data['body'] ?? ''}',
+        createdAt: '${data['published_at'] ?? data['created_at'] ?? ''}',
+        downloadUrl: '${data['download_url'] ?? downloadUrl}'.trim(),
         prerelease: data['prerelease'] == true,
       );
     } catch (_) {
