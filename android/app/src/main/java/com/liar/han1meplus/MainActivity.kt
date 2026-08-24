@@ -112,6 +112,10 @@ class MainActivity : FlutterActivity() {
         client = createClient()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
+                "reportPlaybackDiagnostic" -> {
+                    CrashReporter.reportPlaybackDiagnostic(this, call.argument<String>("details").orEmpty())
+                    result.success(null)
+                }
                 "saveCookies" -> {
                     val url = call.argument<String>("url")
                     if (url == null) result.error("invalid_url", "Missing URL", null)

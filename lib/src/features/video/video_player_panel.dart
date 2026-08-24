@@ -51,6 +51,8 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
   DateTime _lastSaved = DateTime.fromMillisecondsSinceEpoch(0);
   var _autoNextTriggered = false;
   bool? _wasPlaying;
+  String? _loadedSourceUrl;
+  String? _reportedPlaybackError;
 
   @override
   void initState() {
@@ -213,6 +215,8 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
             },
           );
     _loadedQuality = source.quality;
+    _loadedSourceUrl = source.url;
+    _reportedPlaybackError = null;
     _qualityNotifier.value = source.quality;
     _wasPlaying = null;
     VideoPlayerShutdown.track(controller);
@@ -221,16 +225,17 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
       _loadError = null;
     });
     try {
-      await controller.initialize();
+      await controller.initialize().timeout(const Duration(seconds: 45));
       if (!mounted || version != _loadVersion) {
         return;
       }
       if (mounted && version == _loadVersion) setState(() {});
-      controller.addListener(_saveProgress);
+      controller.addListener(_handlePlaybackState);
       await _applyPlaybackPreferences(controller, version, startAt, resumePlaying: resumePlaying);
       if (!mounted || version != _loadVersion || controller != _controllerNotifier.value) return;
       _saveProgress();
     } catch (error) {
+      unawaited(_reportPlaybackDiagnostic(source.url, 'initialize', error.toString(), controller.value.errorDescription));
       if (controller == _controllerNotifier.value) {
         _controllerNotifier.value = null;
         _qualityNotifier.value = null;
@@ -245,10 +250,34 @@ class _VideoPlayerPanelState extends ConsumerState<VideoPlayerPanel> with RouteA
     }
   }
 
+  void _handlePlaybackState() {
+    _saveProgress();
+    final error = _controllerNotifier.value?.value.errorDescription;
+    if (error == null || error.isEmpty || error == _reportedPlaybackError) return;
+    _reportedPlaybackError = error;
+    unawaited(_reportPlaybackDiagnostic(_loadedSourceUrl ?? '', 'async', error, error));
+  }
+
+  Future<void> _reportPlaybackDiagnostic(String sourceUrl, String phase, String error, String? description) {
+    final uri = Uri.tryParse(sourceUrl);
+    final safeUrl = uri == null ? '<invalid-url>' : '${uri.scheme}://${uri.host}${uri.path}';
+    String clip(String value) {
+      final clean = value.replaceAll(RegExp(r'[\r\n]+'), ' ');
+      return clean.substring(0, clean.length > 2000 ? 2000 : clean.length);
+    }
+    return PlatformService.reportPlaybackDiagnostic([
+      'phase: $phase',
+      'url: $safeUrl',
+      'quality: ${_loadedQuality ?? '<unknown>'}',
+      'error: ${clip(error)}',
+      if (description != null && description.isNotEmpty) 'description: ${clip(description)}',
+    ].join('\n'));
+  }
+
   Future<void> _disposeController(VideoPlayerController controller) async {
     VideoPlayerShutdown.untrack(controller);
     try {
-      controller.removeListener(_saveProgress);
+      controller.removeListener(_handlePlaybackState);
       if (controller.value.isInitialized && controller.value.isPlaying) {
         await controller.pause().timeout(const Duration(seconds: 1));
         await Future<void>.delayed(const Duration(milliseconds: 64));

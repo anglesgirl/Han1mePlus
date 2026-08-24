@@ -31,4 +31,12 @@ class PlatformService {
   static Future<String?> selectDirectory() async => Platform.isAndroid ? _channel.invokeMethod<String>('selectDirectory') : null;
   static Future<void> exportDirectory(String sourcePath, String destination) => Platform.isAndroid ? _channel.invokeMethod<void>('exportDirectory', {'sourcePath': sourcePath, 'destination': destination}) : Future.value();
   static Future<bool> saveDocument(String name, Uint8List bytes) async => Platform.isAndroid ? await _channel.invokeMethod<bool>('saveDocument', {'name': name, 'bytes': bytes}) ?? false : false;
+  static Future<void> reportPlaybackDiagnostic(String details) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('reportPlaybackDiagnostic', {'details': details});
+    } on PlatformException {
+      // Diagnostics must never affect playback.
+    }
+  }
 }

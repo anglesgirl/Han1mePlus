@@ -46,6 +46,22 @@ object CrashReporter {
         }
     }
 
+    fun reportPlaybackDiagnostic(context: Context, details: String) {
+        val app = context.applicationContext
+        uploader.execute {
+            val report = buildString {
+                append("=== Han1mePlus playback diagnostic ===\n")
+                append("time: ").append(now()).append('\n')
+                append("app: ").append(app.packageName).append('\n')
+                append("device: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n')
+                append("android: ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append(")\n\n")
+                append(details.take(16 * 1024)).append('\n')
+                appendLogcat(this, 1200)
+            }.take(MAX_REPORT_BYTES)
+            if (!upload("playback", "error", report)) savePending(app, report)
+        }
+    }
+
     private fun buildReport(context: Context, thread: Thread, error: Throwable): String {
         val out = StringBuilder()
         out.append("=== Han1mePlus crash ===\n")
