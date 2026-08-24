@@ -67,7 +67,8 @@ class PreviewsPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final selectedMonth = _PreviewMonth.parse(month);
     final settings = ref.watch(settingsProvider).valueOrNull;
-    final headers = {'Referer': '${Uri.parse(settings?.resolvedBaseUrl ?? 'https://hanimeone.me').origin}/'};
+    final baseUrl = settings?.resolvedBaseUrl ?? 'https://hanimeone.me';
+    final headers = {'Referer': '$baseUrl/previews/$month'};
     final result = ref.watch(previewsProvider(month));
     return Scaffold(
       appBar: AppBar(
