@@ -77,7 +77,6 @@ class AppRouter {
           ],
         ),
         GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
-        GoRoute(path: '/login/web', builder: (context, state) => const AccountWebPage(path: '/login', title: '登录')),
         GoRoute(path: '/login/cookies', builder: (context, state) => const ManualCookiePage()),
         GoRoute(path: '/cache/groups/new', builder: (context, state) => const DownloadGroupPage()),
         GoRoute(path: '/cache/groups/:id', builder: (context, state) => DownloadGroupPage(groupId: state.pathParameters['id'])),
