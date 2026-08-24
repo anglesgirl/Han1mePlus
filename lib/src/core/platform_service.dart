@@ -7,6 +7,7 @@ import 'desktop_platform.dart';
 
 class PlatformService {
   static const _channel = MethodChannel('com.liar.han1meplus/platform');
+  static const _diagnosticsChannel = MethodChannel('com.liar.han1meplus/http');
   static bool get isDesktop => isDesktopPlatformService;
 
   static Future<void> setScreenBrightness(double value) => isDesktop ? Future.value() : _channel.invokeMethod<void>('setScreenBrightness', {'value': value});
@@ -34,9 +35,11 @@ class PlatformService {
   static Future<void> reportPlaybackDiagnostic(String details) async {
     if (!Platform.isAndroid) return;
     try {
-      await _channel.invokeMethod<void>('reportPlaybackDiagnostic', {'details': details});
+      await _diagnosticsChannel.invokeMethod<void>('reportPlaybackDiagnostic', {'details': details});
     } on PlatformException {
       // Diagnostics must never affect playback.
+    } on MissingPluginException {
+      // Diagnostics may be unavailable in an older Android host.
     }
   }
 }

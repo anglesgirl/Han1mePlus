@@ -33,7 +33,7 @@ object CrashReporter {
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             val report = buildReport(app, thread, error)
-            savePending(app, report)
+            savePending(app, "crash", report)
             previousHandler?.uncaughtException(thread, error)
         }
     }
@@ -55,10 +55,9 @@ object CrashReporter {
                 append("app: ").append(app.packageName).append('\n')
                 append("device: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n')
                 append("android: ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append(")\n\n")
-                append(details.take(16 * 1024)).append('\n')
-                appendLogcat(this, 1200)
+                append(redact(details).take(16 * 1024)).append('\n')
             }.take(MAX_REPORT_BYTES)
-            if (!upload("playback", "error", report)) savePending(app, report)
+            if (!upload("crash", "playback", report)) savePending(app, "playback", report)
         }
     }
 
@@ -105,10 +104,10 @@ object CrashReporter {
         }
     }
 
-    private fun savePending(context: Context, report: String) {
+    private fun savePending(context: Context, type: String, report: String) {
         runCatching {
             val dir = File(context.filesDir, "diagnostics/pending").apply { mkdirs() }
-            File(dir, "crash-${System.currentTimeMillis()}.txt").writeText(report)
+            File(dir, "$type-${System.currentTimeMillis()}.txt").writeText(report)
             dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(MAX_LOCAL_REPORTS)?.forEach { it.delete() }
         }.onFailure { Log.w(TAG, "save failed", it) }
     }
@@ -116,7 +115,8 @@ object CrashReporter {
     private fun uploadPending(context: Context) {
         val dir = File(context.filesDir, "diagnostics/pending")
         dir.listFiles()?.sortedBy { it.lastModified() }?.forEach { file ->
-            if (upload("crash", "crash", file.readText())) file.delete()
+            val type = file.name.substringBefore('-').ifBlank { "crash" }
+            if (upload("crash", type, file.readText())) file.delete()
         }
     }
 
@@ -136,7 +136,7 @@ object CrashReporter {
             val objectKey = "$prefix/${type}-${format(requestTime, "yyyyMMdd-HHmmss-SSS")}-${android.os.Process.myPid()}.txt"
             val encodedObjectKey = objectKey.split('/').joinToString("/") { encodePathSegment(it) }
             val canonicalUri = "/${encodePathSegment(bucket)}/$encodedObjectKey"
-            val payload = body.toByteArray(StandardCharsets.UTF_8)
+            val payload = redact(body).toByteArray(StandardCharsets.UTF_8)
             val payloadHash = hex(sha256(payload))
             val host = URL(endpoint).host
             val contentType = "text/plain; charset=utf-8"
@@ -163,6 +163,11 @@ object CrashReporter {
             code in 200..299
         }.onFailure { Log.w(TAG, "R2 upload failed", it) }.getOrDefault(false)
     }
+
+    private fun redact(value: String): String = value
+        .replace(Regex("(?i)(https?://[^\\s?#]+)(?:\\?[^\\s#]*)?(?:#[^\\s]*)?"), "${'$'}1?<redacted>")
+        .replace(Regex("(?i)((?:cookie|set-cookie|authorization)\\s*[:=]\\s*)[^\\r\\n]+"), "${'$'}1<redacted>")
+        .replace(Regex("(?i)((?:access_token|id_token|refresh_token|token|signature|sig)\\s*[=:]\\s*)[^\\s,;]+"), "${'$'}1<redacted>")
 
     private fun now() = format(Date(), "yyyy-MM-dd HH:mm:ss'Z'")
     private fun format(date: Date, pattern: String) = SimpleDateFormat(pattern, Locale.US).apply {
