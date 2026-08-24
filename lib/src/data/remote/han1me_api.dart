@@ -139,19 +139,21 @@ class Han1meApi {
       return PreviewItem(
         id: row.id,
         title: row.querySelector('h4, h3')?.text.trim() ?? '',
-        coverUrl: _absolute(baseUrl, row.querySelector('.preview-info-cover > img')?.attributes['src']),
+        coverUrl: _absolute(baseUrl, _imageSource(row.querySelector('.preview-info-cover > img'))),
         videoTitle: content?.querySelector('h4')?.text.trim(),
         brand: content?.querySelector('h5 a')?.text.trim(),
         releaseDate: content?.querySelectorAll('h5').skip(1).firstOrNull?.text.trim(),
         description: content?.querySelector('h5.caption')?.text.trim(),
         tags: content?.querySelectorAll('.single-video-tag > a').map((tag) => tag.text.trim()).where((tag) => tag.isNotEmpty).toList() ?? const [],
-        previewImages: content?.querySelectorAll('img.preview-image-modal-trigger').map((image) => _absolute(baseUrl, image.attributes['src'])).where((url) => url.isNotEmpty).toList() ?? const [],
+        previewImages: content?.querySelectorAll('img.preview-image-modal-trigger').map((image) => _absolute(baseUrl, _imageSource(image))).where((url) => url.isNotEmpty).toList() ?? const [],
       );
     }).where((item) => item.title.isNotEmpty && item.coverUrl.isNotEmpty).toList(growable: false);
+    final bannerImage = document.querySelector('#player-div-wrapper img') ?? document.querySelector('div[style*="aspect-ratio"] img');
+    final bannerCover = _absolute(baseUrl, _imageSource(bannerImage));
     return PreviewFeed(
       title: header?.querySelector('h1')?.text.trim() ?? '$month previews',
       description: header?.querySelector('p')?.text.trim() ?? '',
-      coverUrl: _absolute(baseUrl, document.querySelector('#player-div-wrapper > img')?.attributes['src']),
+      coverUrl: bannerCover,
       items: items,
     );
   }
@@ -566,6 +568,16 @@ class Han1meApi {
   String _absolute(String baseUrl, String? path) {
     if (path == null || path.isEmpty) return '';
     return Uri.parse(baseUrl).resolve(path).toString();
+  }
+
+  String? _imageSource(dom.Element? image) {
+    if (image == null) return null;
+    for (final name in ['data-src', 'data-lazy-src', 'data-original', 'src']) {
+      final value = image.attributes[name]?.trim();
+      if (value != null && value.isNotEmpty && !value.startsWith('data:')) return value;
+    }
+    final srcset = image.attributes['srcset']?.trim();
+    return srcset?.split(',').first.trim().split(RegExp(r'\s+')).first;
   }
 
   String _mergeCookies(String? current, String next) {
