@@ -62,6 +62,8 @@ class Han1meRepository {
   void setCloudflareCookie(String cookie) => _api.setCookie(cookie);
   Future<VideoDetail> video(String baseUrl, String id) => _merge('video:$baseUrl:$id', () => _api.video(baseUrl, id));
   Future<Account> account(String baseUrl) => _merge('account:$baseUrl', () => _api.account(baseUrl));
+  Future<void> login(String baseUrl, String email, String password) => _api.login(baseUrl, email, password);
+  Future<void> register(String baseUrl, String email, String name, String password) => _api.register(baseUrl, email, name, password);
   Future<void> updateProfile(String baseUrl, String id, String token, String name, String email) => _api.updateProfile(baseUrl, id, token, name, email);
   Future<void> updatePassword(String baseUrl, String id, String token, String oldPassword, String password, String confirmation) => _api.updatePassword(baseUrl, id, token, oldPassword, password, confirmation);
   Future<RemoteLibrary> library(String baseUrl, String id) => _merge('library:$baseUrl:$id', () => _api.library(baseUrl, id));

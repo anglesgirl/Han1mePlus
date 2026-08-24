@@ -72,6 +72,29 @@ class AccountController extends AsyncNotifier<Account?> {
     ref.invalidate(accountsProvider);
   }
 
+  Future<void> login(String email, String password) async {
+    final settings = await ref.read(settingsProvider.future);
+    final repository = ref.read(han1meRepositoryProvider);
+    final http = ref.read(han1meHttpClientProvider);
+    await http.clearCookies(url: settings.resolvedBaseUrl);
+    repository.replaceCookie('');
+    await repository.login(settings.resolvedBaseUrl, email.trim(), password);
+    final cookie = await http.cookies(settings.resolvedBaseUrl);
+    if (cookie.isEmpty) throw StateError('Login session was not received');
+    repository.replaceCookie(cookie);
+    final profile = await repository.account(settings.resolvedBaseUrl);
+    if (profile.id == null || profile.id!.isEmpty) throw StateError('Login was not confirmed by the account profile');
+    final account = profile.copyWith(cookie: cookie);
+    state = AsyncData(account);
+    await ref.read(accountStoreProvider).write(settings.resolvedBaseUrl, account);
+    ref.invalidate(accountsProvider);
+  }
+
+  Future<void> register(String email, String name, String password) async {
+    final settings = await ref.read(settingsProvider.future);
+    await ref.read(han1meRepositoryProvider).register(settings.resolvedBaseUrl, email.trim(), name.trim(), password);
+  }
+
   Future<void> activate(Account account) async {
     if (account.id == null) return;
     final settings = await ref.read(settingsProvider.future);

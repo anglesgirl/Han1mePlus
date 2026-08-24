@@ -175,6 +175,15 @@ class MainActivity : FlutterActivity() {
                     val cookies = getSharedPreferences(preferencesName, Context.MODE_PRIVATE).getString("$cookieKey:$host", "").orEmpty()
                     result.success(cookies.split(';').any { it.trim().substringBefore('=').equals(name, true) })
                 }
+                "cookies" -> {
+                    val url = call.argument<String>("url") ?: return@setMethodCallHandler result.error("invalid_url", "Missing URL", null)
+                    val host = requireNotNull(android.net.Uri.parse(url).host)
+                    val cookies = (persistedCookies(android.net.Uri.parse(url).toHttpUrl()) + responseCookies[host].orEmpty())
+                        .associateBy { it.name }
+                        .values
+                        .joinToString("; ") { "${it.name}=${it.value}" }
+                    result.success(cookies)
+                }
                 "request" -> {
                     EchHttpClient.init(applicationContext)
                     request(call, result, client)

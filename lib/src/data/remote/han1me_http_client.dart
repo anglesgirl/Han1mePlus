@@ -77,6 +77,8 @@ class Han1meHttpClient {
 
   Future<bool> hasCookie(String url, String name) async => _isDesktop ? _cookiesFor(Uri.parse(url)).split(';').any((cookie) => cookie.trim().split('=').first.toLowerCase() == name.toLowerCase()) : await _channel.invokeMethod<bool>('hasCookie', {'url': url, 'name': name}) ?? false;
 
+  Future<String> cookies(String url) async => _isDesktop ? _cookiesFor(Uri.parse(url)) : await _channel.invokeMethod<String>('cookies', {'url': url}) ?? '';
+
   Future<Han1meHttpResponse> get(String url, {String? responseCharset, Map<String, String>? headers}) => _request(url, responseCharset: responseCharset, headers: headers);
 
   Future<void> download(String url, String path, {Map<String, String>? headers}) async {

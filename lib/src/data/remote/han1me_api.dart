@@ -291,6 +291,32 @@ class Han1meApi {
     );
   }
 
+  Future<void> login(String baseUrl, String email, String password) async {
+    final loginUrl = '$baseUrl/login';
+    final page = await _http.get(loginUrl, headers: {'Referer': '$baseUrl/'});
+    if (isCloudflareResponse(page.statusCode, page.headers, page.body)) throw CloudflareChallengeException(loginUrl);
+    if (page.statusCode >= 400) throw StateError('Unable to load login form');
+    final document = html_parser.parse(page.body);
+    final token = document.querySelector('form[action$="/login"] input[name="_token"]')?.attributes['value'] ?? document.querySelector('input[name="_token"]')?.attributes['value'];
+    if (token == null || token.isEmpty) throw StateError('Login form token is unavailable');
+    final response = await _http.post(loginUrl, {'_token': token, 'email': email, 'password': password}, headers: {'X-CSRF-TOKEN': token, 'Referer': loginUrl});
+    if (isCloudflareResponse(response.statusCode, response.headers, response.body)) throw CloudflareChallengeException(loginUrl);
+    if (response.statusCode >= 400) throw StateError('Login failed: HTTP ${response.statusCode}');
+  }
+
+  Future<void> register(String baseUrl, String email, String name, String password) async {
+    final registerUrl = '$baseUrl/register';
+    final page = await _http.get(registerUrl, headers: {'Referer': '$baseUrl/'});
+    if (isCloudflareResponse(page.statusCode, page.headers, page.body)) throw CloudflareChallengeException(registerUrl);
+    if (page.statusCode >= 400) throw StateError('Unable to load registration form');
+    final document = html_parser.parse(page.body);
+    final token = document.querySelector('form[action$="/register"] input[name="_token"]')?.attributes['value'] ?? document.querySelector('input[name="_token"]')?.attributes['value'];
+    if (token == null || token.isEmpty) throw StateError('Registration form token is unavailable');
+    final response = await _http.post(registerUrl, {'_token': token, 'email': email, 'name': name, 'password': password}, headers: {'X-CSRF-TOKEN': token, 'Referer': registerUrl});
+    if (isCloudflareResponse(response.statusCode, response.headers, response.body)) throw CloudflareChallengeException(registerUrl);
+    if (response.statusCode >= 400) throw StateError('Registration failed: HTTP ${response.statusCode}');
+  }
+
   Future<void> updateProfile(String baseUrl, String userId, String token, String name, String email) => _form('$baseUrl/user/$userId', {'_token': token, '_method': 'patch', 'type': 'profile', 'name': name, 'email': email}, token);
 
   Future<void> updatePassword(String baseUrl, String userId, String token, String oldPassword, String password, String confirmation) => _form('$baseUrl/user/$userId', {'_token': token, '_method': 'patch', 'type': 'password', 'password_old': oldPassword, 'password_new': password, 'password_new_confirm': confirmation}, token);
