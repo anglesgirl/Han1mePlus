@@ -50,11 +50,6 @@ class Han1meHttpClient {
     return value;
   }
 
-  Future<String> openInternalLogin(String url) async {
-    if (_isDesktop) return '';
-    return await _channel.invokeMethod<String>('openInternalLogin', {'url': url}) ?? '';
-  }
-
   Future<void> clearWebViewCookies() async {
     if (!_isDesktop) {
       await _channel.invokeMethod<void>('clearWebViewCookies');

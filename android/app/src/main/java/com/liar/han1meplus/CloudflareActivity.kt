@@ -17,8 +17,7 @@ import android.webkit.WebResourceResponse
 class CloudflareActivity : Activity() {
     companion object {
         const val requestUrlKey = "request_url"
-        const val autoCompleteKey = "auto_complete"
-        var onFinished: ((String) -> Unit)? = null
+        var onFinished: (() -> Unit)? = null
     }
 
     private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Mobile Safari/537.36"
@@ -35,7 +34,6 @@ class CloudflareActivity : Activity() {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)
         }
-        val loginMode = intent.getBooleanExtra(autoCompleteKey, false)
         val initialClearance = clearanceCookie(cookies.getCookie(url).orEmpty())
         webView.settings.apply {
             javaScriptEnabled = true
@@ -54,16 +52,12 @@ class CloudflareActivity : Activity() {
         handler.post(object : Runnable {
             override fun run() {
                 if (isFinishing || completed) return
-                if (loginMode) {
-                    handler.postDelayed(this, 500)
-                    return
-                }
                 val cookie = cookies.getCookie(url).orEmpty()
                 if (clearanceCookie(cookie)?.let { it != initialClearance } == true) {
                     completed = true
                     cookies.flush()
                     MainActivity.saveCookies(this@CloudflareActivity, cookie, url)
-                    onFinished?.invoke(cookie)
+                    onFinished?.invoke()
                     onFinished = null
                     finish()
                     return
@@ -81,11 +75,7 @@ class CloudflareActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
-        if (!completed) {
-            val url = intent.getStringExtra(requestUrlKey).orEmpty()
-            val cookie = CookieManager.getInstance().getCookie(url).orEmpty()
-            onFinished?.invoke(cookie)
-        }
+        onFinished?.invoke()
         onFinished = null
         super.onDestroy()
     }
