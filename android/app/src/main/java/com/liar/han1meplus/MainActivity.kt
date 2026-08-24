@@ -177,6 +177,7 @@ class MainActivity : FlutterActivity() {
                     val url = call.argument<String>("url")
                     if (url == null) result.error("invalid_url", "Missing URL", null)
                     else {
+                        EchHttpClient.init(applicationContext)
                         val port = HlsEchProxy.start()
                         result.success(HlsEchProxy.url(port, url, call.argument<String>("referer").orEmpty(), call.argument<String>("cookie")))
                     }
