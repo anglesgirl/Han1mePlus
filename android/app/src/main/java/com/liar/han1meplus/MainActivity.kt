@@ -178,7 +178,7 @@ class MainActivity : FlutterActivity() {
                 "cookies" -> {
                     val url = call.argument<String>("url") ?: return@setMethodCallHandler result.error("invalid_url", "Missing URL", null)
                     val host = requireNotNull(android.net.Uri.parse(url).host)
-                    val cookies = (persistedCookies(android.net.Uri.parse(url).toHttpUrl()) + responseCookies[host].orEmpty())
+                    val cookies = (persistedCookies(url.toString().toHttpUrl()) + responseCookies[host].orEmpty())
                         .associateBy { it.name }
                         .values
                         .joinToString("; ") { "${it.name}=${it.value}" }
