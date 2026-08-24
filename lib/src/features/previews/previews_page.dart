@@ -6,13 +6,52 @@ import 'package:go_router/go_router.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../data/han1me_repository.dart';
+import '../../data/remote/han1me_http_client.dart';
 import '../../domain/models/video.dart';
 import '../settings/settings_controller.dart';
 
-final previewsProvider = FutureProvider.autoDispose.family<PreviewFeed, String>((ref, month) async {
-  final settings = await ref.watch(settingsProvider.future);
-  return ref.watch(han1meRepositoryProvider).previews(settings.resolvedBaseUrl, month);
-});
+class _ProxyImage extends StatefulWidget {
+  const _ProxyImage({required this.url, required this.headers, this.fit, this.memCacheWidth});
+
+  final String url;
+  final Map<String, String> headers;
+  final BoxFit? fit;
+  final int? memCacheWidth;
+
+  @override
+  State<_ProxyImage> createState() => _ProxyImageState();
+}
+
+class _ProxyImageState extends State<_ProxyImage> {
+  late Future<String> _url;
+
+  @override
+  void initState() {
+    super.initState();
+    _url = _resolve();
+  }
+
+  Future<String> _resolve() => Han1meHttpClient().hlsProxyUrl(widget.url, referer: widget.headers['Referer'] ?? '', cookie: widget.headers['Cookie']);
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<String>(
+        future: _url,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          }
+          if (snapshot.hasError || snapshot.data == null || snapshot.data!.isEmpty) {
+            return const SizedBox.shrink();
+          }
+          return CachedNetworkImage(
+            imageUrl: snapshot.data!,
+            fit: widget.fit,
+            memCacheWidth: widget.memCacheWidth,
+            fadeInDuration: Duration.zero,
+          );
+        },
+      );
+}
 
 class PreviewsPage extends ConsumerWidget {
   const PreviewsPage({super.key, required this.month});
@@ -203,7 +242,7 @@ class _PreviewHeader extends StatelessWidget {
           if (feed.coverUrl != null && feed.coverUrl!.isNotEmpty)
             AspectRatio(
               aspectRatio: 16 / 8,
-              child: CachedNetworkImage(imageUrl: feed.coverUrl!, httpHeaders: headers, fit: BoxFit.cover, memCacheWidth: 960, fadeInDuration: Duration.zero),
+              child: _ProxyImage(url: feed.coverUrl!, headers: headers, fit: BoxFit.cover, memCacheWidth: 960),
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -240,7 +279,7 @@ class _PreviewTile extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    CachedNetworkImage(imageUrl: item.coverUrl, httpHeaders: headers, fit: BoxFit.cover, memCacheWidth: 720, fadeInDuration: Duration.zero),
+                    _ProxyImage(url: item.coverUrl, headers: headers, fit: BoxFit.cover, memCacheWidth: 720),
                     DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -306,7 +345,7 @@ class _PreviewTile extends StatelessWidget {
                             onTap: () => _showPreviewImages(context, item, index, headers),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(6),
-                              child: AspectRatio(aspectRatio: 4 / 3, child: CachedNetworkImage(imageUrl: item.previewImages[index], httpHeaders: headers, fit: BoxFit.cover, memCacheWidth: 240, fadeInDuration: Duration.zero)),
+                              child: AspectRatio(aspectRatio: 4 / 3, child: _ProxyImage(url: item.previewImages[index], headers: headers, fit: BoxFit.cover, memCacheWidth: 240)),
                             ),
                           ),
                         ),
@@ -375,7 +414,7 @@ class _PreviewImagesDialogState extends State<_PreviewImagesDialog> {
                 itemCount: widget.item.previewImages.length,
                 onPageChanged: (value) => setState(() => _index = value),
                 itemBuilder: (context, index) => InteractiveViewer(
-                  child: Center(child: CachedNetworkImage(imageUrl: widget.item.previewImages[index], httpHeaders: widget.headers, fit: BoxFit.contain, fadeInDuration: Duration.zero)),
+                  child: _ProxyImage(url: widget.item.previewImages[index], headers: widget.headers, fit: BoxFit.contain),
                 ),
               ),
               Positioned(

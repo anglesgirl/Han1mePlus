@@ -25,7 +25,18 @@ internal object HlsEchProxy {
                 server = socket
                 port = socket.localPort
                 executor.execute {
-                    while (!socket.isClosed) runCatching { executor.execute { handle(socket.accept()) } }
+                    while (!socket.isClosed) {
+                        try {
+                            val client = socket.accept()
+                            executor.execute { runCatching { handle(client) } }
+                        } catch (_: java.net.SocketTimeoutException) {
+                            // Retry transient accept timeouts while the proxy is alive.
+                        } catch (error: java.io.IOException) {
+                            if (socket.isClosed) break
+                            val message = error.message.orEmpty()
+                            if (!message.contains("temporarily unavailable", true) && !message.contains("EAGAIN", true)) break
+                        }
+                    }
                 }
             }.localPort
         }
