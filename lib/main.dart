@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import 'src/app.dart';
+import 'src/core/analytics_service.dart';
 import 'src/core/media_player_initializer.dart';
 import 'src/core/playback_speed_policy.dart';
 import 'src/core/settings.dart';
@@ -26,6 +27,7 @@ Future<void> main() async {
       : loadedSettings;
   if (!identical(settings, loadedSettings)) await SettingsStore(JsonStore()).save(settings);
   MediaPlayerInitializer.bootstrap(settings);
+  if (settings.anonymousAnalyticsEnabled) unawaited(AnalyticsService().track('app_launch'));
   runApp(
     LiquidGlassWidgets.wrap(
       child: ProviderScope(

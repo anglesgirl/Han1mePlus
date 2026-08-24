@@ -75,6 +75,7 @@ class AppSettings {
     this.appLockEnabled = false,
     this.emergencyExitEnabled = false,
     this.hideFromRecents = false,
+    this.anonymousAnalyticsEnabled = false,
     this.commentsEnabled = true,
     this.blockedCommentKeywords = const [],
     this.comicMode = false,
@@ -142,6 +143,7 @@ class AppSettings {
   final bool appLockEnabled;
   final bool emergencyExitEnabled;
   final bool hideFromRecents;
+  final bool anonymousAnalyticsEnabled;
   final bool commentsEnabled;
   final List<String> blockedCommentKeywords;
   final bool comicMode;
@@ -229,6 +231,7 @@ class AppSettings {
         'appLockEnabled': appLockEnabled,
         'emergencyExitEnabled': emergencyExitEnabled,
         'hideFromRecents': hideFromRecents,
+        'anonymousAnalyticsEnabled': anonymousAnalyticsEnabled,
         'commentsEnabled': commentsEnabled,
         'blockedCommentKeywords': blockedCommentKeywords,
         'comicMode': comicMode,
@@ -297,6 +300,7 @@ class AppSettings {
         appLockEnabled: json['appLockEnabled'] as bool? ?? false,
         emergencyExitEnabled: json['emergencyExitEnabled'] as bool? ?? false,
         hideFromRecents: json['hideFromRecents'] as bool? ?? false,
+        anonymousAnalyticsEnabled: json['anonymousAnalyticsEnabled'] as bool? ?? false,
         commentsEnabled: json['commentsEnabled'] as bool? ?? true,
         blockedCommentKeywords: (json['blockedCommentKeywords'] as List? ?? const []).whereType<String>().toList(),
         comicMode: json['comicMode'] as bool? ?? false,
@@ -407,6 +411,7 @@ class AppSettings {
     bool? appLockEnabled,
     bool? emergencyExitEnabled,
     bool? hideFromRecents,
+    bool? anonymousAnalyticsEnabled,
     bool? commentsEnabled,
     List<String>? blockedCommentKeywords,
     bool? comicMode,
@@ -474,6 +479,7 @@ class AppSettings {
         appLockEnabled: appLockEnabled ?? this.appLockEnabled,
         emergencyExitEnabled: emergencyExitEnabled ?? this.emergencyExitEnabled,
         hideFromRecents: hideFromRecents ?? this.hideFromRecents,
+        anonymousAnalyticsEnabled: anonymousAnalyticsEnabled ?? this.anonymousAnalyticsEnabled,
         commentsEnabled: commentsEnabled ?? this.commentsEnabled,
         blockedCommentKeywords: blockedCommentKeywords ?? this.blockedCommentKeywords,
         comicMode: comicMode ?? this.comicMode,
