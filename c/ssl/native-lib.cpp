@@ -72,7 +72,8 @@ size_t header_callback(char* data, size_t size, size_t count, void* user_data) {
   auto* response = static_cast<NativeResponse*>(user_data);
   std::string line(data, size * count);
   if (line.rfind("HTTP/", 0) == 0) {
-    response->headers.clear();
+    // 保留 302 的 Set-Cookie（含 remember_web），不能 clear；只重置状态码相关，非 Cookie
+    // response->headers.clear(); // fix: 302→200 会丢 remember_web
   } else if (const auto separator = line.find(':'); separator != std::string::npos) {
     auto name = line.substr(0, separator);
     auto value = line.substr(separator + 1);
