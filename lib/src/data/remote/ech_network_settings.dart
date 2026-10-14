@@ -20,10 +20,12 @@ class EchNetworkSettings {
   final String dohBootstrapIps;
 
   String get dohUrl => switch (dohPreset) {
-        'alidns' => 'https://dns.alidns.com/dns-query',
-        'dnspod' => 'https://doh.pub/dns-query',
+        // 纯数字 IP DoH：移动网络下 DoH 域名（dns.alidns.com / cloudflare-dns.com 等）
+        // 会被污染或屏蔽，而 IP 直连 223.5.5.5（阿里）可稳定拉取 CF 共享 ECH 配置（RFC8484）
+        'alidns' => 'https://223.5.5.5/dns-query',
+        'dnspod' => 'https://119.29.29.29/dns-query',
         'custom' when dohCustomUrl.trim().isNotEmpty => dohCustomUrl.trim(),
-        _ => 'https://cloudflare-dns.com/dns-query',
+        _ => 'https://223.5.5.5/dns-query',
       };
 
   String get dohResolve {

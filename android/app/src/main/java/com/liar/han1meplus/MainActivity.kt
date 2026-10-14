@@ -33,6 +33,7 @@ import java.io.FileInputStream
 import java.net.InetAddress
 import java.nio.charset.Charset
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 @Keep
@@ -87,6 +88,7 @@ class MainActivity : FlutterActivity() {
     private var documentResult: MethodChannel.Result? = null
     private var documentBytes: ByteArray? = null
     @Volatile private lateinit var client: OkHttpClient
+    private val echFailureCounts = ConcurrentHashMap<String, Int>()
 
     private val cookieJar = object : CookieJar {
         override fun loadForRequest(url: okhttp3.HttpUrl): List<Cookie> =
@@ -380,6 +382,9 @@ class MainActivity : FlutterActivity() {
     private fun nativeEchRequest(request: Request): EchResponse? {
         val settings = networkSettings
         if (!settings.useEch || !EchHttpClient.isLoaded || request.url.host !in hanimeHosts || request.method !in setOf("GET", "POST", "DELETE")) return null
+        // 熔断：同一域名连续 3 次 ECH 失败（403 cf-mitigated 或异常）后，本次进程内直接走 OkHttp 回退，
+        // 避免每次请求都先白等 ECH 失败再回退（cf_clearance 与 libcurl TLS 指纹不兼容时会一直失败）
+        if (echFailureCounts.getOrDefault(request.url.host, 0) >= 3) return null
         return runCatching {
             val headers = request.headers.toMultimap().mapValues { it.value.joinToString(", ") }.toMutableMap()
             cookieJar.loadForRequest(request.url).takeIf { it.isNotEmpty() }?.let { cookies ->
@@ -387,14 +392,25 @@ class MainActivity : FlutterActivity() {
             }
             val response = EchHttpClient.execute(request.method, request.url.toString(), headers, request.body?.let { body -> okio.Buffer().use { buffer -> body.writeTo(buffer); buffer.readByteArray() } }, settings.echDohUrl, settings.echDohResolve)
             EchHttpClient.addLog("${request.url.host}: ${response.echStatus}")
-            response.headers.entries
-                .filter { it.key.equals("Set-Cookie", true) }
-                .flatMap { it.value }
-                .mapNotNull { Cookie.parse(request.url, it) }
-                .takeIf { it.isNotEmpty() }
-                ?.let { cookieJar.saveFromResponse(request.url, it) }
-            response.takeUnless { it.statusCode == 403 && it.headers.any { header -> header.key.equals("cf-mitigated", true) } }
-        }.onFailure { EchHttpClient.addLog("${request.url.host}: ${it.message ?: "native request failed"}") }.getOrNull()
+            if (response.statusCode in 200..299) {
+                // 只有成功响应才回写 cookie：ECH 通道 TLS 指纹与 WebView/OkHttp 不同，
+                // CF 对 ECH 请求 403 时下发的挑战 cookie 会覆盖有效 cf_clearance，
+                // 无条件保存会污染会话导致登录态丢失（作者遇到的"账号无法登录"）
+                echFailureCounts.remove(request.url.host)
+                response.headers.entries
+                    .filter { it.key.equals("Set-Cookie", true) }
+                    .flatMap { it.value }
+                    .mapNotNull { Cookie.parse(request.url, it) }
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { cookieJar.saveFromResponse(request.url, it) }
+            }
+            val usable = response.takeUnless { it.statusCode == 403 && it.headers.any { header -> header.key.equals("cf-mitigated", true) } }
+            if (usable == null) echFailureCounts.merge(request.url.host, 1, Int::plus)
+            usable
+        }.onFailure {
+            echFailureCounts.merge(request.url.host, 1, Int::plus)
+            EchHttpClient.addLog("${request.url.host}: ${it.message ?: "native request failed"}")
+        }.getOrNull()
     }
 
     private fun decodeResponse(bytes: ByteArray, responseCharset: String?): String = bytes.toString(responseCharset?.let(Charset::forName) ?: Charsets.UTF_8)
@@ -452,7 +468,7 @@ class MainActivity : FlutterActivity() {
             dohCustomUrl = preferences.getString(dohCustomUrlKey, "").orEmpty(),
             dohBootstrapIps = preferences.getString(dohBootstrapIpsKey, "").orEmpty(),
             dohTimeoutSeconds = preferences.getInt(dohTimeoutSecondsKey, 10).coerceIn(1, 60),
-            useEch = preferences.getBoolean(useEchKey, false),
+            useEch = preferences.getBoolean(useEchKey, true),
         )
     }
 
@@ -552,9 +568,16 @@ private class ConfigurableDns(private val settings: () -> NetworkSettings) : Dns
 }
 
 private val NetworkSettings.echDohUrl: String
-    get() = "https://0kbpekmcr1.cloudflare-gateway.com/dns-query"
+    // 原生 ECH 通道的 DoH 必须用纯数字 IP：移动网络下 DoH 域名（cloudflare-gateway.com 等）
+    // 会被污染/屏蔽，而 223.5.5.5（阿里，RFC8484）实测可稳定返回 CF 共享 ECH 配置。
+    // 用户配了 custom DoH 时优先使用自定义值。
+    get() = when {
+        dohPreset == "custom" && dohCustomUrl.isNotBlank() -> dohCustomUrl
+        else -> "https://223.5.5.5/dns-query"
+    }
 
 private val NetworkSettings.echDohResolve: String
+    // DoH URL 已是纯 IP，无需 bootstrap 解析
     get() = ""
 
 private class CloudflareInterceptor(private val context: Context) : Interceptor {
