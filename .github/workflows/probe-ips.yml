@@ -4,13 +4,11 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve IPs
+      - name: Resolve real IPs
         run: |
-          for h in t33.cdn2020.com cdn2020.com t26.cdn2020.com t30.cdn2020.com shturl.cc; do
+          for h in t33.cdn2020.com cdn2020.com getchu.com vdownload.hembed.com; do
             echo -n "$h => "
             dig +short "$h" A | tr '\n' ' '
-            echo -n "| v6: "
-            dig +short "$h" AAAA | tr '\n' ' '
             echo -n "| CNAME: "
             dig +short "$h" CNAME | tr '\n' ' '
             echo ""
