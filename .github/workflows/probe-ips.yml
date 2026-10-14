@@ -1,0 +1,21 @@
+name: Probe Site IPs
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve real IPs
+        run: |
+          for h in hanime1.me hanime1.com hanimeone.me javchu.com vdownload.hembed.com vdownload-8.hembed.com 1497203185.rsc.cdn77.org tutu1.space getchu.com shturl.cc; do
+            echo -n "$h => "
+            dig +short "$h" A | tr '\n' ' '
+            echo -n "| v6: "
+            dig +short "$h" AAAA | tr '\n' ' '
+            echo ""
+          done
+          echo "--- CNAME 链 ---"
+          for h in vdownload.hembed.com vdownload-8.hembed.com 1497203185.rsc.cdn77.org; do
+            echo -n "$h CNAME: "
+            dig +short "$h" CNAME | tr '\n' ' '
+            echo ""
+          done
